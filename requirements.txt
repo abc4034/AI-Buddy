@@ -1,0 +1,17 @@
+fastapi==0.136.1
+faster_qwen3_tts==0.2.4
+faster-whisper==1.2.1
+langchain==1.2.10
+langchain_core==1.2.16
+langchain-openai==1.1.10
+langgraph==1.0.10
+langgraph-checkpoint==4.0.1
+nltk==3.9.3
+numpy==2.4.2
+pipecat_ai==0.0.104
+pydantic==2.12.5
+pydub==0.25.1
+python-dotenv==1.2.1
+typing_extensions==4.15.0
+uvicorn==0.47.0
+vllm==0.10.2

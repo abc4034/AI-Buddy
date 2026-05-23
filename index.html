@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Buddy Web Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 8px; border: none; margin: 10px; }
+        #startBtn { background-color: #4CAF50; color: white; }
+        #stopBtn { background-color: #f44336; color: white; display: none; }
+        #status { margin-top: 20px; font-weight: bold; color: #555; }
+        #log { margin-top: 20px; font-size: 12px; color: #888; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; height: 200px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ddd;}
+
+    </style>
+</head>
+<body>
+<h1>AI Buddy — Voice Demo</h1>
+<button id="startBtn">Start Conversation</button>
+<button id="stopBtn">Stop</button>
+<div id="status">Status: Disconnected</div>
+
+<div id="log"></div>
+
+<script>
+        let ws;
+        let audioContext;
+        let mediaStream;
+        let processor;
+
+        let nextPlayTime = 0;
+
+        // 采集要求 16000Hz (匹配 Whisper 和 VAD)
+        const INPUT_SAMPLE_RATE = 16000;
+        // 播放要求 24000Hz (匹配你的 TTS 模型)
+        const OUTPUT_SAMPLE_RATE = 24000;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+
+        function addLog(msg) {
+            logDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        startBtn.onclick = async () => {
+            try {
+                addLog("正在请求麦克风权限...");
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+
+                // 1. 初始化 AudioContext，强制设为 16000 Hz 采集
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: INPUT_SAMPLE_RATE });
+                addLog(`AudioContext 初始化成功，采样率: ${audioContext.sampleRate}Hz`);
+
+                // 2. 连接 WebSocket
+                // 自动判断是本地 http(ws) 还是云端 https(wss)
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const basePath = window.location.pathname.replace(/\/$/, '');
+                const urlParams = new URLSearchParams(window.location.search);
+                const token = urlParams.get('token');
+                const wsUrl = token
+                    ? `${protocol}//${window.location.host}${basePath}/ws?token=${token}`
+                    : `${protocol}//${window.location.host}${basePath}/ws`;
+                ws = new WebSocket(wsUrl);
+                ws.binaryType = 'arraybuffer';
+
+                ws.onopen = () => {
+                    statusDiv.innerText = "Status: Connected, start speaking!";
+                    startBtn.style.display = "none";
+                    stopBtn.style.display = "inline-block";
+                    addLog("WebSocket connected. Streaming audio...");
+                    startRecording();
+                };
+
+                // 3. 接收服务器 TTS 返回的音频并播放
+                ws.onmessage = (event) => {
+                    if (event.data instanceof ArrayBuffer) {
+                        // 收到数据时打印日志 (每收到一定数据才打印，防止刷屏)
+                        if (Math.random() < 0.1) addLog(`Received audio: ${event.data.byteLength} bytes`);
+                        playAudioData(event.data);
+                    }
+                };
+
+                ws.onclose = () => { addLog("WebSocket closed"); stopAll(); };
+                ws.onerror = (e) => { addLog("WebSocket error"); stopAll(); };
+
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerText = "Error: Cannot access microphone";
+                addLog(`Error: ${err.message}`);
+            }
+        };
+
+        stopBtn.onclick = () => { stopAll(); };
+
+        let packetCount = 0;
+        function startRecording() {
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            processor = audioContext.createScriptProcessor(2048, 1, 1);
+
+            // 创建一个增益节点并设为0，防止听到自己的回音
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 0;
+
+            processor.onaudioprocess = (e) => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const inputData = e.inputBuffer.getChannelData(0);
+
+                    // 修改：计算峰值音量 (Peak Volume)
+                    let maxVolume = 0;
+                    for(let i=0; i<inputData.length; i++) {
+                        let absVal = Math.abs(inputData[i]);
+                        if(absVal > maxVolume) maxVolume = absVal;
+                    }
+                    // 映射为 0~100 的直观数值
+                    let displayVolume = Math.round(maxVolume * 100);
+
+                    // 将 Float32 转为 16-bit PCM
+                    const pcm16 = floatTo16BitPCM(inputData);
+                    ws.send(pcm16);
+
+                    packetCount++;
+                    if (packetCount % 50 === 0) {
+                        addLog(`Sent 50 packets, mic volume: ${displayVolume}`);
+                    }
+                }
+            };
+
+            // 必须连接到 destination 才能持续触发 onaudioprocess，经过 gainNode=0 消除回音
+            source.connect(processor);
+            processor.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+        }
+
+        function floatTo16BitPCM(input) {
+            let buffer = new ArrayBuffer(input.length * 2);
+            let view = new DataView(buffer);
+            for (let i = 0, offset = 0; i < input.length; i++, offset += 2) {
+                let s = Math.max(-1, Math.min(1, input[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+            return buffer;
+        }
+
+        function playAudioData(arrayBuffer) {
+            const int16Array = new Int16Array(arrayBuffer);
+            const float32Array = new Float32Array(int16Array.length);
+            for (let i = 0; i < int16Array.length; i++) {
+                float32Array[i] = int16Array[i] / 32768.0;
+            }
+
+            // 重点：告诉浏览器这段音频是 24000Hz 的
+            const audioBuffer = audioContext.createBuffer(1, float32Array.length, OUTPUT_SAMPLE_RATE);
+            audioBuffer.getChannelData(0).set(float32Array);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+
+            // 浏览器会自动将 24000Hz 重采样为你系统的 16000Hz Context
+            source.connect(audioContext.destination);
+
+            // === 核心修复：音频排队无缝拼接逻辑 ===
+
+            // 如果当前的系统时间已经超过了下一次播放时间（说明之前没声音，或者缓冲断供了）
+            // 就把播放时间重置为当前时间 + 一点点极小的延迟缓冲 (比如 0.05秒)
+            if (nextPlayTime < audioContext.currentTime) {
+                nextPlayTime = audioContext.currentTime + 0.05;
+            }
+
+            // 告诉浏览器：不要立刻播放，而是在 nextPlayTime 这个精确的毫秒时刻播放
+            source.start(nextPlayTime);
+
+            // 更新下一次播放的时间点：当前排队时间 + 这段音频本身的长度
+            nextPlayTime += audioBuffer.duration;
+        }
+
+
+        function stopAll() {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+            if (processor) processor.disconnect();
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+            if (audioContext && audioContext.state !== 'closed') audioContext.close();
+
+            nextPlayTime = 0;
+
+            statusDiv.innerText = "Status: Disconnected";
+            startBtn.style.display = "inline-block";
+            stopBtn.style.display = "none";
+        }
+
+</script>
+</body>
+</html>

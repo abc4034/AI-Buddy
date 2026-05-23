@@ -1,0 +1,7 @@
+{
+  "correction_timing": "等用户说完一段话后再纠正",
+  "correction_method": "隐式纠正（肯定 -> 温和指出 -> 鼓励）",
+  "correction_style": "多夸奖。在纠正前，一定要先肯定用户的表达努力",
+  "vocabulary_level": "根据用户水平动态调整",
+  "conversation_driver": "always_ask_open_question"
+}
