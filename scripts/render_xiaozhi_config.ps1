@@ -5,27 +5,53 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Convert-IPv4ToUInt32 {
+  param([string]$IpAddress)
+
+  $bytes = [System.Net.IPAddress]::Parse($IpAddress).GetAddressBytes()
+  [Array]::Reverse($bytes)
+  return [System.BitConverter]::ToUInt32($bytes, 0)
+}
+
 function Get-DefaultLanIp {
-  $preferred = Get-NetIPAddress -AddressFamily IPv4 |
+  $privateIps = Get-NetIPAddress -AddressFamily IPv4 |
+    Where-Object {
+      $_.IPAddress -like "10.*" -or
+      $_.IPAddress -like "172.16.*" -or
+      $_.IPAddress -like "172.17.*" -or
+      $_.IPAddress -like "172.18.*" -or
+      $_.IPAddress -like "172.19.*" -or
+      $_.IPAddress -like "172.2*" -or
+      $_.IPAddress -like "172.30.*" -or
+      $_.IPAddress -like "172.31.*" -or
+      $_.IPAddress -like "192.168.*"
+    } |
     Where-Object {
       $_.IPAddress -notlike "127.*" -and
-      $_.IPAddress -notlike "169.254.*" -and
-      $_.IPAddress -notlike "192.168.182.*" -and
-      $_.IPAddress -notlike "192.168.254.*"
+      $_.IPAddress -notlike "169.254.*"
     } |
-    Sort-Object -Property InterfaceMetric |
-    Select-Object -First 1
+    Select-Object -ExpandProperty IPAddress
+
+  $preferred = $privateIps | Where-Object { $_ -like "192.168.2.*" } | Sort-Object | Select-Object -First 1
+
+  if (-not $preferred) {
+    $preferred = $privateIps |
+      Sort-Object { Convert-IPv4ToUInt32 $_ } |
+      Select-Object -First 1
+  }
 
   if (-not $preferred) {
     throw "Could not auto-detect a LAN IPv4 address. Pass -HostIp manually."
   }
 
-  return $preferred.IPAddress
+  return $preferred
 }
 
 if ([string]::IsNullOrWhiteSpace($HostIp)) {
   $HostIp = Get-DefaultLanIp
 }
+
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 
 $argsList = @(
   "-3.10",
@@ -34,7 +60,7 @@ $argsList = @(
   "--host-ip",
   $HostIp,
   "--repo-root",
-  (Get-Location).Path
+  $repoRoot
 )
 
 if (-not [string]::IsNullOrWhiteSpace($Output)) {
