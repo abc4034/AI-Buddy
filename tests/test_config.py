@@ -4,7 +4,7 @@ from buddy_brain.config import Settings
 
 
 def test_default_settings_are_safe_for_local_demo():
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.openai_base_url == "https://api.deepseek.com"
     assert settings.model_name == "deepseek-v4-flash"
@@ -19,7 +19,7 @@ def test_settings_accept_local_model_override(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "not-needed")
     monkeypatch.setenv("MODEL_NAME", "local-qwen")
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.openai_base_url == "http://127.0.0.1:8001/v1"
     assert settings.openai_api_key == "not-needed"

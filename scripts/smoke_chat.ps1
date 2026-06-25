@@ -14,7 +14,22 @@ $body = @{
   )
 } | ConvertTo-Json -Depth 5
 
-curl.exe -s `
-  -H "Content-Type: application/json" `
-  -d $body `
-  http://127.0.0.1:8010/v1/chat/completions
+Add-Type -AssemblyName System.Net.Http
+
+$client = [System.Net.Http.HttpClient]::new()
+try {
+  $requestBody = [System.Net.Http.StringContent]::new(
+    $body,
+    [System.Text.Encoding]::UTF8,
+    "application/json"
+  )
+  $response = $client.PostAsync(
+    "http://127.0.0.1:8010/v1/chat/completions",
+    $requestBody
+  ).Result
+  $response.EnsureSuccessStatusCode() | Out-Null
+  $bytes = $response.Content.ReadAsByteArrayAsync().Result
+  [System.Text.Encoding]::UTF8.GetString($bytes)
+} finally {
+  $client.Dispose()
+}
