@@ -23,8 +23,15 @@ DEFAULT_PROFILE = Profile(
 
 
 class BuddyRepository:
-    def __init__(self, database_path: Path):
+    def __init__(
+        self,
+        database_path: Path,
+        demo_user_id: str = "demo-mia",
+        demo_device_id: str = "esp32-fc012ccf1754",
+    ):
         self.database_path = Path(database_path)
+        self.demo_user_id = demo_user_id
+        self.demo_device_id = demo_device_id
 
     def _connect(self) -> sqlite3.Connection:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,7 +108,7 @@ class BuddyRepository:
 
     def ensure_demo_user(self) -> Profile:
         now = int(time.time())
-        profile = DEFAULT_PROFILE
+        profile = DEFAULT_PROFILE.model_copy(update={"user_id": self.demo_user_id})
         with self._connect() as conn:
             conn.execute(
                 """
@@ -127,6 +134,25 @@ class BuddyRepository:
                     profile.language_preference,
                     json.dumps(profile.learning_goals, ensure_ascii=False),
                     json.dumps(profile.notes, ensure_ascii=False),
+                    now,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO devices (
+                    device_id, client_id, user_id, created_at, last_seen_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    client_id = excluded.client_id,
+                    user_id = excluded.user_id,
+                    last_seen_at = excluded.last_seen_at
+                """,
+                (
+                    self.demo_device_id,
+                    self.demo_device_id,
+                    profile.user_id,
+                    now,
                     now,
                 ),
             )
@@ -266,6 +292,13 @@ class BuddyRepository:
                 (user_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_device(self, device_id: str) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"device not found for device_id={device_id}")
+        return dict(row)
 
 
 def _merge_unique(existing: list[str], incoming: list[str]) -> list[str]:

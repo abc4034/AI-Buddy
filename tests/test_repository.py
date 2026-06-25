@@ -15,6 +15,25 @@ def test_repository_bootstraps_demo_user_and_profile(tmp_path):
     assert "animals" in profile.interests
 
 
+def test_repository_bootstraps_configured_demo_user_and_device(tmp_path):
+    db_path = tmp_path / "memory.db"
+    repo = BuddyRepository(
+        db_path,
+        demo_user_id="demo-zoe",
+        demo_device_id="esp32-custom-device",
+    )
+    repo.init_schema()
+
+    profile = repo.ensure_demo_user()
+    device = repo.get_device("esp32-custom-device")
+
+    assert profile.user_id == "demo-zoe"
+    assert profile.name == "Mia"
+    assert profile.english_level == "beginner"
+    assert device["device_id"] == "esp32-custom-device"
+    assert device["user_id"] == "demo-zoe"
+
+
 def test_repository_persists_episodes_across_instances(tmp_path):
     db_path = tmp_path / "memory.db"
     repo = BuddyRepository(db_path)
