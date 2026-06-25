@@ -7,6 +7,11 @@ from string import Template
 
 
 TEMPLATE_PATH = Path(__file__).with_name("xiaozhi_config_template.yaml")
+LAN_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
 
 
 def validate_host_ip(host_ip: str) -> str:
@@ -15,7 +20,14 @@ def validate_host_ip(host_ip: str) -> str:
     except ValueError as exc:
         raise ValueError(f"host_ip must be an IPv4 LAN address, got {host_ip!r}") from exc
 
-    if ip.version != 4 or ip.is_loopback or ip.is_unspecified or ip.is_multicast:
+    if (
+        ip.version != 4
+        or ip.is_loopback
+        or ip.is_unspecified
+        or ip.is_multicast
+        or ip.is_link_local
+        or not any(ip in network for network in LAN_NETWORKS)
+    ):
         raise ValueError(f"host_ip must be reachable by the ESP32 on the LAN, got {host_ip!r}")
 
     return str(ip)
