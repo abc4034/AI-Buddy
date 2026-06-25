@@ -26,6 +26,20 @@ def test_parse_memory_patch_returns_empty_patch_for_non_json():
     assert patch.notes_add == []
 
 
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        "[]",
+        '"ok"',
+        '{"interests_add":"space"}',
+    ],
+)
+def test_parse_memory_patch_returns_empty_patch_for_malformed_valid_json(raw_text):
+    patch = parse_memory_patch(raw_text)
+
+    assert patch == type(patch)()
+
+
 @pytest.mark.asyncio
 async def test_memory_service_updates_repository_profile(tmp_path):
     repo = BuddyRepository(tmp_path / "memory.db")

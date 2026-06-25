@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
+from pydantic import ValidationError
 from buddy_brain.config import Settings
 from buddy_brain.llm import LLMProvider
 from buddy_brain.models import MemoryPatch, Profile
@@ -19,7 +21,12 @@ def parse_memory_patch(raw_text: str) -> MemoryPatch:
         payload = json.loads(cleaned)
     except json.JSONDecodeError:
         return MemoryPatch()
-    return MemoryPatch(**payload)
+    if not isinstance(payload, Mapping):
+        return MemoryPatch()
+    try:
+        return MemoryPatch(**payload)
+    except ValidationError:
+        return MemoryPatch()
 
 
 class MemoryService:
