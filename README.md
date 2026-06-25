@@ -13,30 +13,66 @@ Local Buddy Brain service for an ESP32-S3 XiaoZhi-compatible English companion e
 
 ## Setup
 
-Use Python 3.10 or newer. On Windows, `py -3.10` is recommended if another Python version is the default.
+Use Python 3.10 or newer.
+
+### Windows PowerShell
+
+Use `py -3.10` so the venv is created with Python 3.10 even if `python` points to an older install.
 
 ```powershell
-python -m venv .venv
+py -3.10 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+py -3.10 -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and set `OPENAI_API_KEY` from your local environment. Do not commit `.env`.
+### Ubuntu 22.04
+
+Install Python 3.10 and venv support first, then create the environment:
+
+```bash
+sudo apt update
+sudo apt install -y python3.10 python3.10-venv
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+cp .env.example .env
+```
+
+After copying `.env.example` to `.env`, set `OPENAI_API_KEY` locally in `.env`. Do not commit `.env`.
+
+The default hosted provider values in `.env.example` are:
+
+```dotenv
+OPENAI_BASE_URL=https://api.deepseek.com
+MODEL_NAME=deepseek-v4-flash
+```
 
 ## Run
 
+Windows PowerShell:
+
 ```powershell
+uvicorn buddy_brain.app:app --host 0.0.0.0 --port 8010
+```
+
+Ubuntu 22.04:
+
+```bash
+source .venv/bin/activate
 uvicorn buddy_brain.app:app --host 0.0.0.0 --port 8010
 ```
 
 ## Test
 
 ```powershell
-python -m pytest -v
+py -3.10 -m pytest -v
 ```
 
-On Windows hosts where `python` is not 3.10+, run `py -3.10 -m pytest -v`.
+```bash
+source .venv/bin/activate
+python -m pytest -v
+```
 
 ## Smoke Test
 
@@ -46,7 +82,12 @@ Start the server, then run:
 .\scripts\smoke_chat.ps1
 ```
 
-Expected response contains a `choices[0].message.content` value from Buddy.
+Expected response:
+
+- `object` is `chat.completion`
+- `choices[0].message.content` contains a short bilingual Buddy answer, such as a brief Chinese greeting plus one simple English teaching sentence
+
+If the request fails before JSON is returned, the usual cause is that the server is not running or `http://127.0.0.1:8010` is the wrong URL or port.
 
 ## Local Model Switch
 
