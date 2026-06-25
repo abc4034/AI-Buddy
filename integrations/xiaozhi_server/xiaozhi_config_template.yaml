@@ -1,0 +1,33 @@
+server:
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  websocket: ws://${HOST_IP}:8000/xiaozhi/v1/
+  vision_explain: http://${HOST_IP}:8003/mcp/vision/explain
+  auth:
+    enabled: false
+
+selected_module:
+  LLM: BuddyBrainLLM
+  Memory: nomem
+  Intent: nointent
+
+Intent:
+  nointent:
+    type: nointent
+
+LLM:
+  BuddyBrainLLM:
+    type: openai
+    base_url: http://${HOST_IP}:8010/v1
+    model_name: deepseek-v4-flash
+    api_key: local
+    temperature: 0.7
+    max_tokens: 300
+
+prompt: |
+  You are Buddy, a warm English companion for a primary-school beginner.
+  Keep replies short, child-friendly, and suitable for speech.
+  Prefer simple English. Add a short Chinese explanation when it helps.
+  Ask at most one follow-up question.
+  Correct at most one clear English mistake per turn.
