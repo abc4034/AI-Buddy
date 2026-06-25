@@ -1,12 +1,15 @@
 $ErrorActionPreference = "Stop"
 
+$greeting = [string]([char]0x4f60) + [string]([char]0x597d)
+$content = "$greeting Buddy, I like dinosaurs. Can you teach me one English sentence?"
+
 $body = @{
   model = "deepseek-v4-flash"
   stream = $false
   messages = @(
     @{
       role = "user"
-      content = "你好 Buddy, I like dinosaurs. Can you teach me one English sentence?"
+      content = $content
     }
   )
 } | ConvertTo-Json -Depth 5
