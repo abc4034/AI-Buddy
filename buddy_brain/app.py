@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -16,6 +17,9 @@ from buddy_brain.memory import MemoryService
 from buddy_brain.models import ChatCompletionRequest
 from buddy_brain.prompting import build_chat_messages, detect_language
 from buddy_brain.repository import BuddyRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -78,11 +82,18 @@ def create_app(
                 media_type="text/event-stream",
             )
 
-        assistant_text = await provider.complete(
-            messages=messages,
-            model=model,
-            temperature=request.temperature,
-        )
+        try:
+            assistant_text = await provider.complete(
+                messages=messages,
+                model=model,
+                temperature=request.temperature,
+            )
+        except Exception as exc:
+            logger.exception("Model provider request failed")
+            raise HTTPException(
+                status_code=502,
+                detail="model provider request failed",
+            ) from exc
         episode = repository.add_episode(
             user_id=profile.user_id,
             session_id=session_id,
@@ -129,6 +140,31 @@ def _chat_completion_payload(model: str, assistant_text: str) -> dict[str, Any]:
     }
 
 
+def _chat_completion_chunk_payload(
+    completion_id: str,
+    model: str,
+    delta: dict[str, str],
+    finish_reason: str | None,
+) -> dict[str, Any]:
+    return {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": delta,
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+
+
+def _sse_data(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 async def _stream_response(
     provider: LLMProvider,
     memory_service: MemoryService,
@@ -144,22 +180,40 @@ async def _stream_response(
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     chunks: list[str] = []
 
-    async for delta in provider.stream(messages=messages, model=model, temperature=temperature):
-        chunks.append(delta)
-        payload = {
-            "id": completion_id,
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": delta},
-                    "finish_reason": None,
-                }
-            ],
-        }
-        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    yield _sse_data(
+        _chat_completion_chunk_payload(
+            completion_id=completion_id,
+            model=model,
+            delta={"role": "assistant"},
+            finish_reason=None,
+        )
+    )
+
+    try:
+        async for delta in provider.stream(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+        ):
+            chunks.append(delta)
+            yield _sse_data(
+                _chat_completion_chunk_payload(
+                    completion_id=completion_id,
+                    model=model,
+                    delta={"content": delta},
+                    finish_reason=None,
+                )
+            )
+    except Exception:
+        logger.exception("Model provider streaming request failed")
+        yield _sse_data(
+            {
+                "object": "error",
+                "error": {"message": "model provider request failed"},
+            }
+        )
+        yield "data: [DONE]\n\n"
+        return
 
     assistant_text = "".join(chunks)
     episode = repository.add_episode(
@@ -169,7 +223,23 @@ async def _stream_response(
         assistant_text=assistant_text,
         detected_language=detected_language,
     )
-    await memory_service.update_from_episode(user_id, episode.episode_id, user_text, assistant_text)
+    try:
+        await memory_service.update_from_episode(
+            user_id,
+            episode.episode_id,
+            user_text,
+            assistant_text,
+        )
+    except Exception:
+        logger.exception("Memory extraction failed for streamed episode")
+    yield _sse_data(
+        _chat_completion_chunk_payload(
+            completion_id=completion_id,
+            model=model,
+            delta={},
+            finish_reason="stop",
+        )
+    )
     yield "data: [DONE]\n\n"
 
 

@@ -17,6 +17,25 @@ class FakeChatProvider:
             yield chunk
 
 
+class FailingCompleteProvider(FakeChatProvider):
+    async def complete(self, messages, model=None, temperature=None):
+        raise RuntimeError("provider unavailable")
+
+
+class FailingStreamProvider(FakeChatProvider):
+    async def stream(self, messages, model=None, temperature=None) -> AsyncIterator[str]:
+        raise RuntimeError("provider unavailable")
+        yield ""
+
+
+class FailingMemoryService:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def update_from_episode(self, user_id, episode_id, user_text, assistant_text):
+        raise RuntimeError("memory extraction failed")
+
+
 @pytest.fixture
 def test_settings(tmp_path):
     return Settings(
