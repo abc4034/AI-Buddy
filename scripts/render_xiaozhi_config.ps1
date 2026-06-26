@@ -99,6 +99,16 @@ function Get-DefaultLanIp {
   return Get-NetIPAddress -AddressFamily IPv4 | Select-PreferredLanIp
 }
 
+function Assert-PrivateLanIp {
+  param([string]$IpAddress)
+
+  if (-not (Test-PrivateIPv4 -IpAddress $IpAddress)) {
+    throw "HostIp must be a private LAN IPv4 address."
+  }
+
+  return $IpAddress
+}
+
 function Get-RenderXiaoZhiConfigArguments {
   param(
     [string]$HostIp,
@@ -130,6 +140,9 @@ function Invoke-RenderXiaoZhiConfig {
 
   if ([string]::IsNullOrWhiteSpace($HostIp)) {
     $HostIp = Get-DefaultLanIp
+  }
+  else {
+    $HostIp = Assert-PrivateLanIp -IpAddress $HostIp
   }
 
   $argsList = Get-RenderXiaoZhiConfigArguments -HostIp $HostIp -Output $Output

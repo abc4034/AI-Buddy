@@ -94,7 +94,7 @@ def test_render_script_preserves_manual_host_ip_and_repo_root():
             [
                 "& {",
                 "function global:py { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
-                f"& '{script_path}' -HostIp '172.200.1.1'",
+                f"& '{script_path}' -HostIp '192.168.2.9'",
                 "}",
             ]
         ),
@@ -104,7 +104,7 @@ def test_render_script_preserves_manual_host_ip_and_repo_root():
     args = json.loads(result.stdout.splitlines()[-1])
     repo_root_arg = args[args.index("--repo-root") + 1]
 
-    assert "172.200.1.1" in args
+    assert "192.168.2.9" in args
     assert repo_root_arg.endswith("\\AI Buddy\\.worktrees\\codex-xiaozhi-buddy-bridge")
     assert not repo_root_arg.endswith("\\AI Buddy\\.worktrees")
 
@@ -117,6 +117,84 @@ def test_demo_url_script_uses_precise_rfc1918_selection():
     )
 
     assert result.stdout.strip() == "192.168.2.20"
+
+
+def test_demo_url_script_rejects_invalid_manual_host_ip_values():
+    script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
+
+    for host_ip in ("127.0.0.1", "172.200.1.1", "8.8.8.8"):
+        result = run_powershell(
+            f"& {{ . '{script_path}'; Invoke-PrintLocalDemoUrls -HostIp '{host_ip}' }}",
+            check=False,
+        )
+
+        assert result.returncode != 0, host_ip
+        assert "private" in (result.stderr + result.stdout).lower()
+
+
+def test_demo_url_script_prints_expected_urls_for_valid_manual_host_ip():
+    script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
+
+    result = run_powershell(
+        f"& {{ . '{script_path}'; Invoke-PrintLocalDemoUrls -HostIp '192.168.2.9' }}"
+    )
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    assert lines == [
+        "Buddy Brain health: http://192.168.2.9:8010/health",
+        "Buddy Brain OpenAI base_url: http://192.168.2.9:8010/v1",
+        "XiaoZhi OTA URL: http://192.168.2.9:8003/xiaozhi/ota/",
+        "XiaoZhi WebSocket URL: ws://192.168.2.9:8000/xiaozhi/v1/",
+        "Firmware OTA value, if flashing is needed: CONFIG_OTA_URL=http://192.168.2.9:8003/xiaozhi/ota/",
+    ]
+
+
+def test_start_buddy_brain_script_uses_fixed_host_and_port_by_default():
+    script_path = SCRIPTS_DIR / "start_buddy_brain.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:py { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                f"& '{script_path}'",
+                "}",
+            ]
+        )
+    )
+    args = json.loads(result.stdout.splitlines()[-1])
+
+    assert [str(arg) for arg in args] == [
+        "-3.10",
+        "-m",
+        "uvicorn",
+        "buddy_brain.app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8010",
+    ]
+
+
+def test_start_buddy_brain_script_rejects_non_contract_port_before_calling_py():
+    script_path = SCRIPTS_DIR / "start_buddy_brain.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:py { throw 'py should not be called' }",
+                f"& '{script_path}' -Port 8011",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    combined = (result.stderr + result.stdout).lower()
+    assert "8010" in combined
+    assert "py should not be called" not in combined
 
 
 def test_start_xiaozhi_script_uses_conda_environment():

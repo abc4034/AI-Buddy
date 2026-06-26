@@ -94,18 +94,31 @@ function Get-DefaultLanIp {
   return Get-NetIPAddress -AddressFamily IPv4 | Select-PreferredLanIp
 }
 
+function Assert-PrivateLanIp {
+  param([string]$IpAddress)
+
+  if (-not (Test-PrivateIPv4 -IpAddress $IpAddress)) {
+    throw "HostIp must be a private LAN IPv4 address so device-facing URLs use your local network."
+  }
+
+  return $IpAddress
+}
+
 function Invoke-PrintLocalDemoUrls {
   param([string]$HostIp)
 
   if ([string]::IsNullOrWhiteSpace($HostIp)) {
     $HostIp = Get-DefaultLanIp
   }
+  else {
+    $HostIp = Assert-PrivateLanIp -IpAddress $HostIp
+  }
 
-  Write-Host "Buddy Brain health: http://$HostIp:8010/health"
-  Write-Host "Buddy Brain OpenAI base_url: http://$HostIp:8010/v1"
-  Write-Host "XiaoZhi OTA URL: http://$HostIp:8003/xiaozhi/ota/"
-  Write-Host "XiaoZhi WebSocket URL: ws://$HostIp:8000/xiaozhi/v1/"
-  Write-Host "Firmware OTA value, if flashing is needed: CONFIG_OTA_URL=http://$HostIp:8003/xiaozhi/ota/"
+  Write-Host "Buddy Brain health: http://${HostIp}:8010/health"
+  Write-Host "Buddy Brain OpenAI base_url: http://${HostIp}:8010/v1"
+  Write-Host "XiaoZhi OTA URL: http://${HostIp}:8003/xiaozhi/ota/"
+  Write-Host "XiaoZhi WebSocket URL: ws://${HostIp}:8000/xiaozhi/v1/"
+  Write-Host "Firmware OTA value, if flashing is needed: CONFIG_OTA_URL=http://${HostIp}:8003/xiaozhi/ota/"
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
