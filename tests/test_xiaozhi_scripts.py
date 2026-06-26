@@ -18,13 +18,24 @@ SCRIPTS = [
 
 
 def run_powershell(command: str, *, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+    ps_command = (
+        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+        "$OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+        + command
+    )
     return subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command],
         cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=check,
     )
+
+
+def combined_output(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stderr or "") + (result.stdout or "")
 
 
 def test_xiaozhi_scripts_exist_and_are_ascii_safe():
@@ -45,7 +56,7 @@ def test_setup_paths_require_strict_child_directory_under_run():
     )
 
     assert result.returncode != 0
-    assert "strict child" in (result.stderr or result.stdout)
+    assert "strict child" in combined_output(result)
 
 
 def test_setup_paths_keep_all_runtime_artifacts_inside_repo_run():
@@ -156,8 +167,9 @@ def test_render_auto_detection_requires_explicit_host_without_exact_demo_host():
     )
 
     assert result.returncode != 0
-    assert "192.168.2.9" in (result.stderr + result.stdout)
-    assert "HostIp" in (result.stderr + result.stdout)
+    output = combined_output(result)
+    assert "192.168.2.9" in output
+    assert "HostIp" in output
 
 
 def test_render_script_preserves_manual_host_ip_and_repo_root():
@@ -179,7 +191,7 @@ def test_render_script_preserves_manual_host_ip_and_repo_root():
     repo_root_arg = args[args.index("--repo-root") + 1]
 
     assert "192.168.2.9" in args
-    assert repo_root_arg.endswith("\\AI Buddy\\.worktrees\\codex-xiaozhi-buddy-bridge")
+    assert Path(repo_root_arg) == REPO_ROOT
     assert not repo_root_arg.endswith("\\AI Buddy\\.worktrees")
 
 
@@ -200,7 +212,7 @@ def test_render_script_rejects_invalid_manual_host_ip_before_calling_py():
         )
 
         assert result.returncode != 0, host_ip
-        combined = (result.stderr + result.stdout).lower()
+        combined = combined_output(result).lower()
         assert "192.168.2.9" in combined
         assert "py should not be called" not in combined
 
@@ -222,7 +234,7 @@ def test_render_script_rejects_output_outside_runtime_before_calling_py(tmp_path
     )
 
     assert result.returncode != 0
-    combined = (result.stderr + result.stdout).lower()
+    combined = combined_output(result).lower()
     assert ".run" in combined
     assert "py should not be called" not in combined
 
@@ -264,7 +276,7 @@ def test_render_script_rejects_nested_output_under_runtime_data_before_calling_p
     )
 
     assert result.returncode != 0
-    combined = (result.stderr + result.stdout).lower()
+    combined = combined_output(result).lower()
     assert ".run" in combined
     assert "py should not be called" not in combined
 
@@ -288,8 +300,9 @@ def test_demo_url_script_auto_detection_requires_explicit_host_without_exact_dem
     )
 
     assert result.returncode != 0
-    assert "192.168.2.9" in (result.stderr + result.stdout)
-    assert "HostIp" in (result.stderr + result.stdout)
+    output = combined_output(result)
+    assert "192.168.2.9" in output
+    assert "HostIp" in output
 
 
 def test_demo_url_script_rejects_invalid_manual_host_ip_values():
@@ -302,7 +315,7 @@ def test_demo_url_script_rejects_invalid_manual_host_ip_values():
         )
 
         assert result.returncode != 0, host_ip
-        assert "192.168.2.9" in (result.stderr + result.stdout)
+        assert "192.168.2.9" in combined_output(result)
 
 
 def test_demo_url_script_prints_expected_urls_for_valid_manual_host_ip():
@@ -365,7 +378,7 @@ def test_start_buddy_brain_script_rejects_non_contract_port_before_calling_py():
     )
 
     assert result.returncode != 0
-    combined = (result.stderr + result.stdout).lower()
+    combined = combined_output(result).lower()
     assert "8010" in combined
     assert "py should not be called" not in combined
 
@@ -386,9 +399,8 @@ def test_start_xiaozhi_script_resolves_default_server_dir_from_repo_root():
         cwd=REPO_ROOT.parent,
     )
 
-    assert result.stdout.strip().endswith(
-        "\\AI Buddy\\.worktrees\\codex-xiaozhi-buddy-bridge\\.run\\xiaozhi-esp32-server\\main\\xiaozhi-server"
-    )
+    expected = REPO_ROOT / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server"
+    assert Path(result.stdout.strip()) == expected
 
 
 def test_start_xiaozhi_script_preflight_fails_when_app_py_missing():
@@ -408,7 +420,7 @@ def test_start_xiaozhi_script_preflight_fails_when_app_py_missing():
             shutil.rmtree(runtime_root)
 
     assert result.returncode != 0
-    assert "app.py" in (result.stderr + result.stdout)
+    assert "app.py" in combined_output(result)
 
 
 def test_start_xiaozhi_script_preflight_fails_when_config_missing():
@@ -428,7 +440,7 @@ def test_start_xiaozhi_script_preflight_fails_when_config_missing():
             shutil.rmtree(runtime_root)
 
     assert result.returncode != 0
-    assert ".config.yaml" in (result.stderr + result.stdout)
+    assert ".config.yaml" in combined_output(result)
 
 
 def test_start_xiaozhi_script_rejects_server_dir_outside_runtime_before_calling_conda(tmp_path: Path):
@@ -452,7 +464,7 @@ def test_start_xiaozhi_script_rejects_server_dir_outside_runtime_before_calling_
     )
 
     assert result.returncode != 0
-    combined = (result.stderr + result.stdout).lower()
+    combined = combined_output(result).lower()
     assert ".run" in combined
     assert "conda should not be called" not in combined
 
