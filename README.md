@@ -106,9 +106,11 @@ For this first local bridge demo, use the pinned Task 2 host `192.168.2.9` so th
 Point the XiaoZhi server LLM provider at:
 
 ```text
-base_url: http://192.168.2.9:8010/v1
-api_key: local
-model_name: deepseek-v4-flash
+BuddyBrainLLM:
+  type: openai
+  base_url: http://192.168.2.9:8010/v1
+  api_key: local
+  model_name: deepseek-v4-flash
 ```
 
 Keep XiaoZhi server memory disabled for this demo. Buddy Brain owns profile and memory persistence.
