@@ -5,6 +5,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Get-RepoRoot {
+  return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+}
+
 function Convert-IPv4ToUInt32 {
   param([string]$IpAddress)
 
@@ -13,59 +17,126 @@ function Convert-IPv4ToUInt32 {
   return [System.BitConverter]::ToUInt32($bytes, 0)
 }
 
-function Get-DefaultLanIp {
-  $privateIps = Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object {
-      $_.IPAddress -like "10.*" -or
-      $_.IPAddress -like "172.16.*" -or
-      $_.IPAddress -like "172.17.*" -or
-      $_.IPAddress -like "172.18.*" -or
-      $_.IPAddress -like "172.19.*" -or
-      $_.IPAddress -like "172.2*" -or
-      $_.IPAddress -like "172.30.*" -or
-      $_.IPAddress -like "172.31.*" -or
-      $_.IPAddress -like "192.168.*"
-    } |
-    Where-Object {
-      $_.IPAddress -notlike "127.*" -and
-      $_.IPAddress -notlike "169.254.*"
-    } |
-    Select-Object -ExpandProperty IPAddress
+function Test-PrivateIPv4 {
+  param([string]$IpAddress)
 
-  $preferred = $privateIps | Where-Object { $_ -like "192.168.2.*" } | Sort-Object | Select-Object -First 1
+  $parsedIp = $null
+  if (-not [System.Net.IPAddress]::TryParse($IpAddress, [ref]$parsedIp)) {
+    return $false
+  }
 
-  if (-not $preferred) {
-    $preferred = $privateIps |
+  if ($parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+    return $false
+  }
+
+  $octets = $IpAddress.Split(".")
+  $first = [int]$octets[0]
+  $second = [int]$octets[1]
+
+  if ($first -eq 10) {
+    return $true
+  }
+
+  if (($first -eq 192) -and ($second -eq 168)) {
+    return $true
+  }
+
+  if (($first -eq 172) -and ($second -ge 16) -and ($second -le 31)) {
+    return $true
+  }
+
+  return $false
+}
+
+function Select-PreferredLanIp {
+  param(
+    [Parameter(ValueFromPipeline = $true)]
+    [object]$InputObject
+  )
+
+  begin {
+    $candidates = @()
+  }
+
+  process {
+    if ($null -eq $InputObject) {
+      return
+    }
+
+    if ($InputObject -is [string]) {
+      $ipAddress = $InputObject
+    }
+    else {
+      $ipAddress = $InputObject.IPAddress
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ipAddress) -and (Test-PrivateIPv4 -IpAddress $ipAddress)) {
+      $candidates += $ipAddress
+    }
+  }
+
+  end {
+    $preferred = $candidates |
+      Where-Object { $_ -like "192.168.2.*" } |
       Sort-Object { Convert-IPv4ToUInt32 $_ } |
       Select-Object -First 1
+
+    if (-not $preferred) {
+      $preferred = $candidates |
+        Sort-Object { Convert-IPv4ToUInt32 $_ } |
+        Select-Object -First 1
+    }
+
+    if (-not $preferred) {
+      throw "Could not auto-detect a LAN IPv4 address. Pass -HostIp manually."
+    }
+
+    return $preferred
+  }
+}
+
+function Get-DefaultLanIp {
+  return Get-NetIPAddress -AddressFamily IPv4 | Select-PreferredLanIp
+}
+
+function Get-RenderXiaoZhiConfigArguments {
+  param(
+    [string]$HostIp,
+    [string]$Output
+  )
+
+  $argsList = @(
+    "-3.10",
+    "-m",
+    "integrations.xiaozhi_server.render_config",
+    "--host-ip",
+    $HostIp,
+    "--repo-root",
+    (Get-RepoRoot)
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($Output)) {
+    $argsList += @("--output", $Output)
   }
 
-  if (-not $preferred) {
-    throw "Could not auto-detect a LAN IPv4 address. Pass -HostIp manually."
+  return $argsList
+}
+
+function Invoke-RenderXiaoZhiConfig {
+  param(
+    [string]$HostIp,
+    [string]$Output
+  )
+
+  if ([string]::IsNullOrWhiteSpace($HostIp)) {
+    $HostIp = Get-DefaultLanIp
   }
 
-  return $preferred
+  $argsList = Get-RenderXiaoZhiConfigArguments -HostIp $HostIp -Output $Output
+  Write-Host "Rendering XiaoZhi config for host IP $HostIp"
+  & py @argsList
 }
 
-if ([string]::IsNullOrWhiteSpace($HostIp)) {
-  $HostIp = Get-DefaultLanIp
+if ($MyInvocation.InvocationName -ne ".") {
+  Invoke-RenderXiaoZhiConfig -HostIp $HostIp -Output $Output
 }
-
-$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-
-$argsList = @(
-  "-3.10",
-  "-m",
-  "integrations.xiaozhi_server.render_config",
-  "--host-ip",
-  $HostIp,
-  "--repo-root",
-  $repoRoot
-)
-
-if (-not [string]::IsNullOrWhiteSpace($Output)) {
-  $argsList += @("--output", $Output)
-}
-
-Write-Host "Rendering XiaoZhi config for host IP $HostIp"
-& py @argsList

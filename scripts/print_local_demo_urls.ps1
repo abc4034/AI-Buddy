@@ -12,46 +12,102 @@ function Convert-IPv4ToUInt32 {
   return [System.BitConverter]::ToUInt32($bytes, 0)
 }
 
-function Get-DefaultLanIp {
-  $privateIps = Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object {
-      $_.IPAddress -like "10.*" -or
-      $_.IPAddress -like "172.16.*" -or
-      $_.IPAddress -like "172.17.*" -or
-      $_.IPAddress -like "172.18.*" -or
-      $_.IPAddress -like "172.19.*" -or
-      $_.IPAddress -like "172.2*" -or
-      $_.IPAddress -like "172.30.*" -or
-      $_.IPAddress -like "172.31.*" -or
-      $_.IPAddress -like "192.168.*"
-    } |
-    Where-Object {
-      $_.IPAddress -notlike "127.*" -and
-      $_.IPAddress -notlike "169.254.*"
-    } |
-    Select-Object -ExpandProperty IPAddress
+function Test-PrivateIPv4 {
+  param([string]$IpAddress)
 
-  $preferred = $privateIps | Where-Object { $_ -like "192.168.2.*" } | Sort-Object | Select-Object -First 1
+  $parsedIp = $null
+  if (-not [System.Net.IPAddress]::TryParse($IpAddress, [ref]$parsedIp)) {
+    return $false
+  }
 
-  if (-not $preferred) {
-    $preferred = $privateIps |
+  if ($parsedIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+    return $false
+  }
+
+  $octets = $IpAddress.Split(".")
+  $first = [int]$octets[0]
+  $second = [int]$octets[1]
+
+  if ($first -eq 10) {
+    return $true
+  }
+
+  if (($first -eq 192) -and ($second -eq 168)) {
+    return $true
+  }
+
+  if (($first -eq 172) -and ($second -ge 16) -and ($second -le 31)) {
+    return $true
+  }
+
+  return $false
+}
+
+function Select-PreferredLanIp {
+  param(
+    [Parameter(ValueFromPipeline = $true)]
+    [object]$InputObject
+  )
+
+  begin {
+    $candidates = @()
+  }
+
+  process {
+    if ($null -eq $InputObject) {
+      return
+    }
+
+    if ($InputObject -is [string]) {
+      $ipAddress = $InputObject
+    }
+    else {
+      $ipAddress = $InputObject.IPAddress
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ipAddress) -and (Test-PrivateIPv4 -IpAddress $ipAddress)) {
+      $candidates += $ipAddress
+    }
+  }
+
+  end {
+    $preferred = $candidates |
+      Where-Object { $_ -like "192.168.2.*" } |
       Sort-Object { Convert-IPv4ToUInt32 $_ } |
       Select-Object -First 1
-  }
 
-  if (-not $preferred) {
-    throw "Could not auto-detect a LAN IPv4 address. Pass -HostIp manually."
-  }
+    if (-not $preferred) {
+      $preferred = $candidates |
+        Sort-Object { Convert-IPv4ToUInt32 $_ } |
+        Select-Object -First 1
+    }
 
-  return $preferred
+    if (-not $preferred) {
+      throw "Could not auto-detect a LAN IPv4 address. Pass -HostIp manually."
+    }
+
+    return $preferred
+  }
 }
 
-if ([string]::IsNullOrWhiteSpace($HostIp)) {
-  $HostIp = Get-DefaultLanIp
+function Get-DefaultLanIp {
+  return Get-NetIPAddress -AddressFamily IPv4 | Select-PreferredLanIp
 }
 
-Write-Host "Buddy Brain health: http://$HostIp:8010/health"
-Write-Host "Buddy Brain OpenAI base_url: http://$HostIp:8010/v1"
-Write-Host "XiaoZhi OTA URL: http://$HostIp:8003/xiaozhi/ota/"
-Write-Host "XiaoZhi WebSocket URL: ws://$HostIp:8000/xiaozhi/v1/"
-Write-Host "Firmware OTA value, if flashing is needed: CONFIG_OTA_URL=http://$HostIp:8003/xiaozhi/ota/"
+function Invoke-PrintLocalDemoUrls {
+  param([string]$HostIp)
+
+  if ([string]::IsNullOrWhiteSpace($HostIp)) {
+    $HostIp = Get-DefaultLanIp
+  }
+
+  Write-Host "Buddy Brain health: http://$HostIp:8010/health"
+  Write-Host "Buddy Brain OpenAI base_url: http://$HostIp:8010/v1"
+  Write-Host "XiaoZhi OTA URL: http://$HostIp:8003/xiaozhi/ota/"
+  Write-Host "XiaoZhi WebSocket URL: ws://$HostIp:8000/xiaozhi/v1/"
+  Write-Host "Firmware OTA value, if flashing is needed: CONFIG_OTA_URL=http://$HostIp:8003/xiaozhi/ota/"
+}
+
+if ($MyInvocation.InvocationName -ne ".") {
+  Invoke-PrintLocalDemoUrls -HostIp $HostIp
+}
