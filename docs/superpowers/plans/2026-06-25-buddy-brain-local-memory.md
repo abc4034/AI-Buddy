@@ -1655,7 +1655,7 @@ Use the same API surface and change environment values:
 
 ```dotenv
 OPENAI_BASE_URL=http://127.0.0.1:8001/v1
-OPENAI_API_KEY=
+OPENAI_API_KEY=not-needed
 MODEL_NAME=local-model-name
 ```
 

@@ -114,7 +114,7 @@ MODEL_NAME=deepseek-v4-flash
 
 ```text
 OPENAI_BASE_URL=http://127.0.0.1:8001/v1
-OPENAI_API_KEY=
+OPENAI_API_KEY=not-needed
 MODEL_NAME=本地模型名称或路径
 ```
 

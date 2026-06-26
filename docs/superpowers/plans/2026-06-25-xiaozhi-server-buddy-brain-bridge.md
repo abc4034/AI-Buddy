@@ -715,11 +715,10 @@ Expected: all tests pass.
 Run:
 
 ```powershell
-$secretPattern = 'sk-[A-Za-z0-9_-]{8,}|OPENAI_API_KEY' + '=.*[A-Za-z0-9]'
-git grep -n -E $secretPattern HEAD
+git grep -n -E "sk-[A-Za-z0-9_-]{8,}|OPENAI_API_KEY=.*[A-Za-z0-9]" HEAD
 ```
 
-Expected: no tracked secret values. `.env.example` may contain the API key variable with an empty value only.
+Expected: no tracked secret values. `.env.example` may contain `OPENAI_API_KEY=` with an empty value only.
 
 - [ ] **Step 5: Commit if fixes were needed**
 
