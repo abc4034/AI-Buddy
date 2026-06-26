@@ -159,7 +159,7 @@ function Resolve-XiaoZhiConfigOutputPath {
   $resolvedOutput = Resolve-RepoPath -Path $Output -RepoRoot $repoRoot
   $resolvedParent = Split-Path -Parent $resolvedOutput
 
-  if (-not (Test-IsChildOrSameDirectory -Path $resolvedParent -ParentDirectory $allowedDataDir)) {
+  if (-not ($resolvedParent.Equals($allowedDataDir, [System.StringComparison]::OrdinalIgnoreCase))) {
     throw "Output must resolve under $allowedDataDir"
   }
 

@@ -247,6 +247,28 @@ def test_render_script_allows_custom_output_under_runtime_data():
     assert output_arg.endswith("\\.run\\xiaozhi-esp32-server\\main\\xiaozhi-server\\data\\custom.config.yaml")
 
 
+def test_render_script_rejects_nested_output_under_runtime_data_before_calling_py():
+    script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
+    output = REPO_ROOT / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "nested" / "custom.config.yaml"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:py { throw 'py should not be called' }",
+                f"& '{script_path}' -HostIp '192.168.2.9' -Output '{output}'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    combined = (result.stderr + result.stdout).lower()
+    assert ".run" in combined
+    assert "py should not be called" not in combined
+
+
 def test_demo_url_script_auto_detection_prefers_exact_demo_host():
     script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
 
