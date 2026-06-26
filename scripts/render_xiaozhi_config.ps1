@@ -9,6 +9,35 @@ function Get-RepoRoot {
   return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 }
 
+function Resolve-RepoPath {
+  param(
+    [string]$Path,
+    [string]$RepoRoot = (Get-RepoRoot)
+  )
+
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return [System.IO.Path]::GetFullPath($Path)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
+}
+
+function Test-IsChildOrSameDirectory {
+  param(
+    [string]$Path,
+    [string]$ParentDirectory
+  )
+
+  $normalizedParent = [System.IO.Path]::GetFullPath($ParentDirectory).TrimEnd("\")
+  $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd("\")
+
+  if ($normalizedPath.Equals($normalizedParent, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $true
+  }
+
+  return $normalizedPath.StartsWith("$normalizedParent\", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Test-PrivateIPv4 {
   param([string]$IpAddress)
 
@@ -117,6 +146,26 @@ function Get-RenderXiaoZhiConfigArguments {
   return $argsList
 }
 
+function Resolve-XiaoZhiConfigOutputPath {
+  param([string]$Output)
+
+  $repoRoot = Get-RepoRoot
+  $allowedDataDir = Resolve-RepoPath -Path ".run\xiaozhi-esp32-server\main\xiaozhi-server\data" -RepoRoot $repoRoot
+
+  if ([string]::IsNullOrWhiteSpace($Output)) {
+    return ""
+  }
+
+  $resolvedOutput = Resolve-RepoPath -Path $Output -RepoRoot $repoRoot
+  $resolvedParent = Split-Path -Parent $resolvedOutput
+
+  if (-not (Test-IsChildOrSameDirectory -Path $resolvedParent -ParentDirectory $allowedDataDir)) {
+    throw "Output must resolve under $allowedDataDir"
+  }
+
+  return $resolvedOutput
+}
+
 function Invoke-RenderXiaoZhiConfig {
   param(
     [string]$HostIp,
@@ -130,6 +179,7 @@ function Invoke-RenderXiaoZhiConfig {
     $HostIp = Assert-DemoHostIp -IpAddress $HostIp
   }
 
+  $Output = Resolve-XiaoZhiConfigOutputPath -Output $Output
   $argsList = Get-RenderXiaoZhiConfigArguments -HostIp $HostIp -Output $Output
   Write-Host "Rendering XiaoZhi config for host IP $HostIp"
   & py @argsList

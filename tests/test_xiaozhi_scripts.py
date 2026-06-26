@@ -205,6 +205,48 @@ def test_render_script_rejects_invalid_manual_host_ip_before_calling_py():
         assert "py should not be called" not in combined
 
 
+def test_render_script_rejects_output_outside_runtime_before_calling_py(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
+    output = tmp_path / "outside" / ".config.yaml"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:py { throw 'py should not be called' }",
+                f"& '{script_path}' -HostIp '192.168.2.9' -Output '{output}'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    combined = (result.stderr + result.stdout).lower()
+    assert ".run" in combined
+    assert "py should not be called" not in combined
+
+
+def test_render_script_allows_custom_output_under_runtime_data():
+    script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
+    output = REPO_ROOT / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "custom.config.yaml"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:py { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                f"& '{script_path}' -HostIp '192.168.2.9' -Output '{output}'",
+                "}",
+            ]
+        )
+    )
+    args = json.loads(result.stdout.splitlines()[-1])
+
+    output_arg = args[args.index("--output") + 1]
+    assert output_arg.endswith("\\.run\\xiaozhi-esp32-server\\main\\xiaozhi-server\\data\\custom.config.yaml")
+
+
 def test_demo_url_script_auto_detection_prefers_exact_demo_host():
     script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
 
@@ -327,37 +369,47 @@ def test_start_xiaozhi_script_resolves_default_server_dir_from_repo_root():
     )
 
 
-def test_start_xiaozhi_script_preflight_fails_when_app_py_missing(tmp_path: Path):
+def test_start_xiaozhi_script_preflight_fails_when_app_py_missing():
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
-    server_dir = tmp_path / "xiaozhi-server"
+    runtime_root = REPO_ROOT / ".run" / f"pytest-missing-app-{uuid.uuid4().hex}"
+    server_dir = runtime_root / "main" / "xiaozhi-server"
     (server_dir / "data").mkdir(parents=True)
     (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
 
-    result = run_powershell(
-        f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
-        check=False,
-    )
+    try:
+        result = run_powershell(
+            f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
+            check=False,
+        )
+    finally:
+        if runtime_root.exists():
+            shutil.rmtree(runtime_root)
 
     assert result.returncode != 0
     assert "app.py" in (result.stderr + result.stdout)
 
 
-def test_start_xiaozhi_script_preflight_fails_when_config_missing(tmp_path: Path):
+def test_start_xiaozhi_script_preflight_fails_when_config_missing():
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
-    server_dir = tmp_path / "xiaozhi-server"
+    runtime_root = REPO_ROOT / ".run" / f"pytest-missing-config-{uuid.uuid4().hex}"
+    server_dir = runtime_root / "main" / "xiaozhi-server"
     (server_dir / "data").mkdir(parents=True)
     (server_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
 
-    result = run_powershell(
-        f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
-        check=False,
-    )
+    try:
+        result = run_powershell(
+            f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
+            check=False,
+        )
+    finally:
+        if runtime_root.exists():
+            shutil.rmtree(runtime_root)
 
     assert result.returncode != 0
     assert ".config.yaml" in (result.stderr + result.stdout)
 
 
-def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir(tmp_path: Path):
+def test_start_xiaozhi_script_rejects_server_dir_outside_runtime_before_calling_conda(tmp_path: Path):
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
     server_dir = tmp_path / "xiaozhi-server"
     (server_dir / "data").mkdir(parents=True)
@@ -368,21 +420,51 @@ def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir(tmp_path: P
         "\n".join(
             [
                 "& {",
-                "function global:conda {",
-                "  param([Parameter(ValueFromRemainingArguments = $true)] $Args)",
-                "  [pscustomobject]@{",
-                "    Args = @($Args)",
-                "    Location = (Get-Location).Path",
-                "  } | ConvertTo-Json -Compress",
-                "}",
+                "function global:conda { throw 'conda should not be called' }",
                 f". '{script_path}'",
                 f"Invoke-StartXiaoZhiServer -ServerDir '{server_dir}'",
                 "}",
             ]
-        )
+        ),
+        check=False,
     )
 
-    payload = json.loads(result.stdout.splitlines()[-1])
+    assert result.returncode != 0
+    combined = (result.stderr + result.stdout).lower()
+    assert ".run" in combined
+    assert "conda should not be called" not in combined
+
+
+def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir():
+    script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
+    runtime_root = REPO_ROOT / ".run" / f"pytest-start-{uuid.uuid4().hex}"
+    server_dir = runtime_root / "main" / "xiaozhi-server"
+    (server_dir / "data").mkdir(parents=True)
+    (server_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
+
+    try:
+        result = run_powershell(
+            "\n".join(
+                [
+                    "& {",
+                    "function global:conda {",
+                    "  param([Parameter(ValueFromRemainingArguments = $true)] $Args)",
+                    "  [pscustomobject]@{",
+                    "    Args = @($Args)",
+                    "    Location = (Get-Location).Path",
+                    "  } | ConvertTo-Json -Compress",
+                    "}",
+                    f". '{script_path}'",
+                    f"Invoke-StartXiaoZhiServer -ServerDir '{server_dir}'",
+                    "}",
+                ]
+            )
+        )
+        payload = json.loads(result.stdout.splitlines()[-1])
+    finally:
+        if runtime_root.exists():
+            shutil.rmtree(runtime_root)
 
     assert [str(arg) for arg in payload["Args"]] == ["run", "-n", "xiaozhi-esp32-server", "python", "app.py"]
-    assert payload["Location"] == str(server_dir)
+    assert payload["Location"].endswith("\\.run\\" + runtime_root.name + "\\main\\xiaozhi-server")

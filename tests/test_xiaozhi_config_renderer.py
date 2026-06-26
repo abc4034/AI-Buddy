@@ -4,6 +4,7 @@ import pytest
 
 from integrations.xiaozhi_server.render_config import (
     default_output_path,
+    resolve_output_path,
     render_config,
     write_config,
 )
@@ -31,9 +32,10 @@ def test_render_config_rejects_unusable_device_ip(bad_ip):
 
 
 def test_write_config_creates_parent_directories(tmp_path):
-    output = tmp_path / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
+    repo_root = tmp_path / "repo"
+    output = repo_root / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
 
-    written = write_config("192.168.2.9", output)
+    written = write_config("192.168.2.9", output, repo_root=repo_root)
 
     assert written == output
     assert output.exists()
@@ -46,3 +48,28 @@ def test_default_output_path_points_to_xiaozhi_runtime_data():
     path = default_output_path(repo_root)
 
     assert path.as_posix().endswith(".run/xiaozhi-esp32-server/main/xiaozhi-server/data/.config.yaml")
+
+
+def test_resolve_output_path_rejects_paths_outside_xiaozhi_runtime_data(tmp_path):
+    repo_root = tmp_path / "repo"
+    outside_output = tmp_path / "outside" / ".config.yaml"
+
+    with pytest.raises(ValueError, match="under"):
+        resolve_output_path(repo_root, outside_output)
+
+
+def test_resolve_output_path_allows_custom_path_under_xiaozhi_runtime_data(tmp_path):
+    repo_root = tmp_path / "repo"
+    output = repo_root / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "custom.config.yaml"
+
+    resolved = resolve_output_path(repo_root, output)
+
+    assert resolved == output.resolve(strict=False)
+
+
+def test_write_config_rejects_output_outside_xiaozhi_runtime_data(tmp_path):
+    repo_root = tmp_path / "repo"
+    output = tmp_path / "outside" / ".config.yaml"
+
+    with pytest.raises(ValueError, match="under"):
+        write_config("192.168.2.9", output, repo_root=repo_root)

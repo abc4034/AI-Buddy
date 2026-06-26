@@ -43,7 +43,27 @@ def default_output_path(repo_root: Path) -> Path:
     return repo_root / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
 
 
-def write_config(host_ip: str, output_path: Path) -> Path:
+def allowed_output_dir(repo_root: Path) -> Path:
+    return default_output_path(repo_root).parent
+
+
+def resolve_output_path(repo_root: Path, output_path: Path | None) -> Path:
+    repo_root = repo_root.resolve(strict=False)
+    default_output = default_output_path(repo_root).resolve(strict=False)
+    allowed_dir = allowed_output_dir(repo_root).resolve(strict=False)
+    candidate = (output_path or default_output).resolve(strict=False)
+
+    if candidate == default_output:
+        return candidate
+
+    if candidate.parent != allowed_dir:
+        raise ValueError(f"output must stay under {allowed_dir}, got {candidate}")
+
+    return candidate
+
+
+def write_config(host_ip: str, output_path: Path, *, repo_root: Path | None = None) -> Path:
+    output_path = resolve_output_path(repo_root or Path.cwd(), output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(render_config(host_ip), encoding="utf-8")
     return output_path
@@ -66,8 +86,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    output = args.output or default_output_path(args.repo_root)
-    written = write_config(args.host_ip, output)
+    output = resolve_output_path(args.repo_root, args.output)
+    written = write_config(args.host_ip, output, repo_root=args.repo_root)
     print(written)
 
 
