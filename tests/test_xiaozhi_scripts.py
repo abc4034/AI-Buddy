@@ -1,5 +1,7 @@
 import json
+import shutil
 import subprocess
+import uuid
 from pathlib import Path
 
 
@@ -58,6 +60,65 @@ def test_setup_paths_keep_all_runtime_artifacts_inside_repo_run():
     assert paths["DestinationPath"] != paths["RunRoot"]
     assert paths["ZipPath"].startswith(paths["RunRoot"] + "\\")
     assert paths["ExtractDir"].startswith(paths["RunRoot"] + "\\")
+
+
+def test_setup_entrypoint_flow_uses_stubbed_download_and_extract_under_repo_run():
+    script_path = SCRIPTS_DIR / "setup_xiaozhi_server.ps1"
+    unique_root = REPO_ROOT / ".run" / f"pytest-xiaozhi-setup-{uuid.uuid4().hex}"
+    destination = unique_root / "server"
+    destination_suffix = f"\\.run\\{unique_root.name}\\server"
+    zip_path = unique_root / "xiaozhi-esp32-server-main.zip"
+    destination_arg = str(Path(".run") / unique_root.name / "server").replace("/", "\\")
+
+    if unique_root.exists():
+        shutil.rmtree(unique_root)
+
+    try:
+        result = run_powershell(
+            "\n".join(
+                [
+                    "& {",
+                    f". '{script_path}'",
+                    "function Invoke-WebRequest {",
+                    "  param([string]$Uri, [string]$OutFile)",
+                    "  Set-Content -Path $OutFile -Value 'fake zip'",
+                    "}",
+                    "function Expand-Archive {",
+                    "  param([string]$LiteralPath, [string]$DestinationPath)",
+                    "  New-Item -ItemType Directory -Force -Path (Join-Path $DestinationPath 'xiaozhi-esp32-server-main') | Out-Null",
+                    "  New-Item -ItemType Directory -Force -Path (Join-Path $DestinationPath 'xiaozhi-esp32-server-main\\main\\xiaozhi-server') | Out-Null",
+                    "}",
+                    f"$destination = '{destination_arg}'",
+                    "$paths = Get-XiaoZhiSetupPaths -Destination $destination",
+                    "Invoke-XiaoZhiSetup -Destination $destination -Force",
+                    "[pscustomobject]@{",
+                    "  DestinationExists = Test-Path -LiteralPath $paths.DestinationPath",
+                    "  DataDirExists = Test-Path -LiteralPath (Join-Path $paths.DestinationPath 'main\\xiaozhi-server\\data')",
+                    "  ZipExists = Test-Path -LiteralPath $paths.ZipPath",
+                    "  ExtractDirExists = Test-Path -LiteralPath $paths.ExtractDir",
+                    "  DestinationPath = $paths.DestinationPath",
+                    "  ZipPath = $paths.ZipPath",
+                    "  RunRoot = $paths.RunRoot",
+                    "  DataDir = Join-Path $paths.DestinationPath 'main\\xiaozhi-server\\data'",
+                    "} | ConvertTo-Json -Compress",
+                    "}",
+                ]
+            )
+        )
+        payload = json.loads(result.stdout.splitlines()[-1])
+
+        assert payload["DestinationExists"] is True
+        assert payload["DataDirExists"] is True
+        assert payload["ZipExists"] is True
+        assert payload["ExtractDirExists"] is False
+        assert payload["DestinationPath"].endswith(destination_suffix)
+        assert payload["DataDir"].endswith(destination_suffix + "\\main\\xiaozhi-server\\data")
+        assert payload["ZipPath"].startswith(payload["RunRoot"] + "\\")
+        assert payload["ZipPath"].endswith(f"\\.run\\{unique_root.name}\\xiaozhi-esp32-server-main.zip")
+        assert zip_path.read_text(encoding="utf-8").strip() == "fake zip"
+    finally:
+        if unique_root.exists():
+            shutil.rmtree(unique_root)
 
 
 def test_render_private_ipv4_helper_matches_rfc1918_only():
