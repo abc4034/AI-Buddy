@@ -101,12 +101,79 @@ MODEL_NAME=local-model-name
 
 ## XiaoZhi Server Handoff
 
+For this first local bridge demo, use the pinned Task 2 host `192.168.2.9` so the Buddy Brain, WebSocket, and OTA URLs all stay aligned with the current scripts.
+
 Point the XiaoZhi server LLM provider at:
 
 ```text
-base_url: http://<host-lan-ip>:8010/v1
+base_url: http://192.168.2.9:8010/v1
 api_key: not-needed-by-buddy-brain
 model: deepseek-v4-flash
 ```
 
 Keep XiaoZhi server memory disabled for this demo. Buddy Brain owns profile and memory persistence.
+
+## XiaoZhi Local Bridge
+
+This phase keeps the ESP32 firmware and XiaoZhi device protocol, but routes XiaoZhi server LLM calls to Buddy Brain.
+
+Local URLs for the current Windows host:
+
+```text
+Buddy Brain: http://192.168.2.9:8010
+Buddy Brain OpenAI base_url: http://192.168.2.9:8010/v1
+XiaoZhi WebSocket: ws://192.168.2.9:8000/xiaozhi/v1/
+XiaoZhi OTA: http://192.168.2.9:8003/xiaozhi/ota/
+```
+
+Print the current URLs:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\print_local_demo_urls.ps1
+```
+
+Prepare the XiaoZhi server runtime source under `.run/`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_xiaozhi_server.ps1
+```
+
+Render XiaoZhi `data/.config.yaml`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\render_xiaozhi_config.ps1 -HostIp 192.168.2.9
+```
+
+Start Buddy Brain in terminal A:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_brain.ps1
+```
+
+Smoke test Buddy Brain in terminal B:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_chat.ps1
+```
+
+Start XiaoZhi server in terminal C after its conda environment and dependencies are installed:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_xiaozhi_server.ps1
+```
+
+The generated XiaoZhi config sets:
+
+```yaml
+selected_module:
+  LLM: BuddyBrainLLM
+  Memory: nomem
+  Intent: nointent
+```
+
+Hardware routing pause point:
+
+- Do not flash firmware until Buddy Brain and XiaoZhi server both start successfully.
+- The current ESP32 firmware still uses `https://api.tenclass.net/xiaozhi/ota/`.
+- If no runtime OTA override is available, firmware must be rebuilt for `bread-compact-wifi-lcd` with `CONFIG_OTA_URL=http://192.168.2.9:8003/xiaozhi/ota/`.
+- When flashing is needed, stop and ask the user to plug in USB and press `BOOT` / `RESET`.
