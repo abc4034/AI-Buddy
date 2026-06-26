@@ -51,7 +51,12 @@ def resolve_output_path(repo_root: Path, output_path: Path | None) -> Path:
     repo_root = repo_root.resolve(strict=False)
     default_output = default_output_path(repo_root).resolve(strict=False)
     allowed_dir = allowed_output_dir(repo_root).resolve(strict=False)
-    candidate = (output_path or default_output).resolve(strict=False)
+    if output_path is None:
+        candidate = default_output
+    elif output_path.is_absolute():
+        candidate = output_path.resolve(strict=False)
+    else:
+        candidate = (repo_root / output_path).resolve(strict=False)
 
     if candidate == default_output:
         return candidate

@@ -67,6 +67,15 @@ def test_resolve_output_path_allows_custom_path_under_xiaozhi_runtime_data(tmp_p
     assert resolved == output.resolve(strict=False)
 
 
+def test_resolve_output_path_resolves_relative_output_from_repo_root(tmp_path):
+    repo_root = tmp_path / "repo"
+    output = Path(".run") / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "custom.config.yaml"
+
+    resolved = resolve_output_path(repo_root, output)
+
+    assert resolved == (repo_root / output).resolve(strict=False)
+
+
 def test_write_config_rejects_output_outside_xiaozhi_runtime_data(tmp_path):
     repo_root = tmp_path / "repo"
     output = tmp_path / "outside" / ".config.yaml"
