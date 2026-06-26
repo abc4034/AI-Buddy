@@ -76,14 +76,27 @@ def test_render_private_ipv4_helper_matches_rfc1918_only():
     assert rows["8.8.8.8"] is False
 
 
-def test_render_prefers_192_168_2_addresses():
+def test_render_auto_detection_prefers_exact_demo_host():
     script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
 
     result = run_powershell(
-        f"& {{ . '{script_path}'; @('10.0.0.8', '172.20.5.4', '192.168.2.44', '192.168.1.10') | Select-PreferredLanIp }}"
+        f"& {{ . '{script_path}'; @('10.0.0.8', '172.20.5.4', '192.168.2.44', '192.168.2.9', '192.168.1.10') | Select-PreferredLanIp }}"
     )
 
-    assert result.stdout.strip() == "192.168.2.44"
+    assert result.stdout.strip() == "192.168.2.9"
+
+
+def test_render_auto_detection_requires_explicit_host_without_exact_demo_host():
+    script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
+
+    result = run_powershell(
+        f"& {{ . '{script_path}'; @('10.0.0.8', '172.20.5.4', '192.168.2.44', '192.168.1.10') | Select-PreferredLanIp }}",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "192.168.2.9" in (result.stderr + result.stdout)
+    assert "HostIp" in (result.stderr + result.stdout)
 
 
 def test_render_script_preserves_manual_host_ip_and_repo_root():
@@ -109,14 +122,27 @@ def test_render_script_preserves_manual_host_ip_and_repo_root():
     assert not repo_root_arg.endswith("\\AI Buddy\\.worktrees")
 
 
-def test_demo_url_script_uses_precise_rfc1918_selection():
+def test_demo_url_script_auto_detection_prefers_exact_demo_host():
     script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
 
     result = run_powershell(
-        f"& {{ . '{script_path}'; @('172.200.1.1', '10.0.0.5', '192.168.2.20') | Select-PreferredLanIp }}"
+        f"& {{ . '{script_path}'; @('172.200.1.1', '10.0.0.5', '192.168.2.20', '192.168.2.9') | Select-PreferredLanIp }}"
     )
 
-    assert result.stdout.strip() == "192.168.2.20"
+    assert result.stdout.strip() == "192.168.2.9"
+
+
+def test_demo_url_script_auto_detection_requires_explicit_host_without_exact_demo_host():
+    script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
+
+    result = run_powershell(
+        f"& {{ . '{script_path}'; @('172.200.1.1', '10.0.0.5', '192.168.2.20') | Select-PreferredLanIp }}",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "192.168.2.9" in (result.stderr + result.stdout)
+    assert "HostIp" in (result.stderr + result.stdout)
 
 
 def test_demo_url_script_rejects_invalid_manual_host_ip_values():
@@ -203,3 +229,77 @@ def test_start_xiaozhi_script_uses_conda_environment():
     assert "conda run" in text
     assert "xiaozhi-esp32-server" in text
     assert "python app.py" in text
+
+
+def test_start_xiaozhi_script_resolves_default_server_dir_from_repo_root():
+    script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
+
+    result = run_powershell(
+        f"& {{ . '{script_path}'; Get-ResolvedXiaoZhiServerDir -ServerDir '.run\\xiaozhi-esp32-server\\main\\xiaozhi-server' }}",
+        cwd=REPO_ROOT.parent,
+    )
+
+    assert result.stdout.strip().endswith(
+        "\\AI Buddy\\.worktrees\\codex-xiaozhi-buddy-bridge\\.run\\xiaozhi-esp32-server\\main\\xiaozhi-server"
+    )
+
+
+def test_start_xiaozhi_script_preflight_fails_when_app_py_missing(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
+    server_dir = tmp_path / "xiaozhi-server"
+    (server_dir / "data").mkdir(parents=True)
+    (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
+
+    result = run_powershell(
+        f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "app.py" in (result.stderr + result.stdout)
+
+
+def test_start_xiaozhi_script_preflight_fails_when_config_missing(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
+    server_dir = tmp_path / "xiaozhi-server"
+    (server_dir / "data").mkdir(parents=True)
+    (server_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
+
+    result = run_powershell(
+        f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert ".config.yaml" in (result.stderr + result.stdout)
+
+
+def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
+    server_dir = tmp_path / "xiaozhi-server"
+    (server_dir / "data").mkdir(parents=True)
+    (server_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:conda {",
+                "  param([Parameter(ValueFromRemainingArguments = $true)] $Args)",
+                "  [pscustomobject]@{",
+                "    Args = @($Args)",
+                "    Location = (Get-Location).Path",
+                "  } | ConvertTo-Json -Compress",
+                "}",
+                f". '{script_path}'",
+                f"Invoke-StartXiaoZhiServer -ServerDir '{server_dir}'",
+                "}",
+            ]
+        )
+    )
+
+    payload = json.loads(result.stdout.splitlines()[-1])
+
+    assert [str(arg) for arg in payload["Args"]] == ["run", "-n", "xiaozhi-esp32-server", "python", "app.py"]
+    assert payload["Location"] == str(server_dir)

@@ -72,18 +72,11 @@ function Select-PreferredLanIp {
 
   end {
     $preferred = $candidates |
-      Where-Object { $_ -like "192.168.2.*" } |
-      Sort-Object { Convert-IPv4ToUInt32 $_ } |
+      Where-Object { $_ -eq "192.168.2.9" } |
       Select-Object -First 1
 
     if (-not $preferred) {
-      $preferred = $candidates |
-        Sort-Object { Convert-IPv4ToUInt32 $_ } |
-        Select-Object -First 1
-    }
-
-    if (-not $preferred) {
-      throw "Could not auto-detect a LAN IPv4 address. Pass -HostIp manually."
+      throw "Could not auto-detect demo host IP 192.168.2.9 from private LAN candidates. Pass -HostIp explicitly."
     }
 
     return $preferred
