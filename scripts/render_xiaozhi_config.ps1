@@ -9,14 +9,6 @@ function Get-RepoRoot {
   return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 }
 
-function Convert-IPv4ToUInt32 {
-  param([string]$IpAddress)
-
-  $bytes = [System.Net.IPAddress]::Parse($IpAddress).GetAddressBytes()
-  [Array]::Reverse($bytes)
-  return [System.BitConverter]::ToUInt32($bytes, 0)
-}
-
 function Test-PrivateIPv4 {
   param([string]$IpAddress)
 
@@ -92,11 +84,11 @@ function Get-DefaultLanIp {
   return Get-NetIPAddress -AddressFamily IPv4 | Select-PreferredLanIp
 }
 
-function Assert-PrivateLanIp {
+function Assert-DemoHostIp {
   param([string]$IpAddress)
 
-  if (-not (Test-PrivateIPv4 -IpAddress $IpAddress)) {
-    throw "HostIp must be a private LAN IPv4 address."
+  if ($IpAddress -ne "192.168.2.9") {
+    throw "HostIp must be the Task 2 demo host IP 192.168.2.9."
   }
 
   return $IpAddress
@@ -135,7 +127,7 @@ function Invoke-RenderXiaoZhiConfig {
     $HostIp = Get-DefaultLanIp
   }
   else {
-    $HostIp = Assert-PrivateLanIp -IpAddress $HostIp
+    $HostIp = Assert-DemoHostIp -IpAddress $HostIp
   }
 
   $argsList = Get-RenderXiaoZhiConfigArguments -HostIp $HostIp -Output $Output

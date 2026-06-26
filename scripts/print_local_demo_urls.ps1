@@ -4,14 +4,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Convert-IPv4ToUInt32 {
-  param([string]$IpAddress)
-
-  $bytes = [System.Net.IPAddress]::Parse($IpAddress).GetAddressBytes()
-  [Array]::Reverse($bytes)
-  return [System.BitConverter]::ToUInt32($bytes, 0)
-}
-
 function Test-PrivateIPv4 {
   param([string]$IpAddress)
 
@@ -87,11 +79,11 @@ function Get-DefaultLanIp {
   return Get-NetIPAddress -AddressFamily IPv4 | Select-PreferredLanIp
 }
 
-function Assert-PrivateLanIp {
+function Assert-DemoHostIp {
   param([string]$IpAddress)
 
-  if (-not (Test-PrivateIPv4 -IpAddress $IpAddress)) {
-    throw "HostIp must be a private LAN IPv4 address so device-facing URLs use your local network."
+  if ($IpAddress -ne "192.168.2.9") {
+    throw "HostIp must be the Task 2 demo host IP 192.168.2.9 so device-facing URLs match the first-demo contract."
   }
 
   return $IpAddress
@@ -104,7 +96,7 @@ function Invoke-PrintLocalDemoUrls {
     $HostIp = Get-DefaultLanIp
   }
   else {
-    $HostIp = Assert-PrivateLanIp -IpAddress $HostIp
+    $HostIp = Assert-DemoHostIp -IpAddress $HostIp
   }
 
   Write-Host "Buddy Brain health: http://${HostIp}:8010/health"

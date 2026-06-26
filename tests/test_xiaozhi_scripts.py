@@ -186,7 +186,7 @@ def test_render_script_preserves_manual_host_ip_and_repo_root():
 def test_render_script_rejects_invalid_manual_host_ip_before_calling_py():
     script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
 
-    for host_ip in ("127.0.0.1", "8.8.8.8"):
+    for host_ip in ("127.0.0.1", "8.8.8.8", "192.168.2.44", "10.0.0.5"):
         result = run_powershell(
             "\n".join(
                 [
@@ -201,8 +201,7 @@ def test_render_script_rejects_invalid_manual_host_ip_before_calling_py():
 
         assert result.returncode != 0, host_ip
         combined = (result.stderr + result.stdout).lower()
-        assert "private" in combined
-        assert "lan" in combined
+        assert "192.168.2.9" in combined
         assert "py should not be called" not in combined
 
 
@@ -232,14 +231,14 @@ def test_demo_url_script_auto_detection_requires_explicit_host_without_exact_dem
 def test_demo_url_script_rejects_invalid_manual_host_ip_values():
     script_path = SCRIPTS_DIR / "print_local_demo_urls.ps1"
 
-    for host_ip in ("127.0.0.1", "172.200.1.1", "8.8.8.8"):
+    for host_ip in ("127.0.0.1", "8.8.8.8", "192.168.2.44", "10.0.0.5"):
         result = run_powershell(
             f"& {{ . '{script_path}'; Invoke-PrintLocalDemoUrls -HostIp '{host_ip}' }}",
             check=False,
         )
 
         assert result.returncode != 0, host_ip
-        assert "private" in (result.stderr + result.stdout).lower()
+        assert "192.168.2.9" in (result.stderr + result.stdout)
 
 
 def test_demo_url_script_prints_expected_urls_for_valid_manual_host_ip():
