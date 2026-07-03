@@ -51,6 +51,7 @@ class SessionRecord:
     last_audio_at: int | None = None
     last_message_at: int | None = None
     last_listen_state: str | None = None
+    debug_turns: list[dict[str, Any]] = field(default_factory=list)
 
     def record_message(self, message_type: str, payload: dict[str, Any] | None = None) -> None:
         now = epoch_seconds()
@@ -74,6 +75,25 @@ class SessionRecord:
         self.audio_byte_count += byte_count
         self.last_audio_at = epoch_seconds()
 
+    def record_debug_turn(
+        self,
+        *,
+        user_text: str,
+        status: str,
+        assistant_text: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        turn = {
+            "created_at": epoch_seconds(),
+            "status": status,
+            "user_text": user_text,
+            "assistant_text": assistant_text,
+            "error": error,
+        }
+        self.debug_turns.append(turn)
+        self.debug_turns = self.debug_turns[-20:]
+        return turn
+
     def disconnect(self) -> None:
         self.disconnected_at = epoch_seconds()
 
@@ -92,6 +112,7 @@ class SessionRecord:
             "last_audio_at": self.last_audio_at,
             "last_message_at": self.last_message_at,
             "last_listen_state": self.last_listen_state,
+            "debug_turns": list(self.debug_turns),
         }
 
 
@@ -159,12 +180,39 @@ class GatewayState:
             if session:
                 session.record_audio(byte_count)
 
+    def record_debug_turn(
+        self,
+        session_id: str,
+        *,
+        user_text: str,
+        status: str,
+        assistant_text: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            return session.record_debug_turn(
+                user_text=user_text,
+                status=status,
+                assistant_text=assistant_text,
+                error=error,
+            )
+
     def finish_session(self, session_id: str) -> dict[str, Any] | None:
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
                 return None
             session.disconnect()
+            return session.summary()
+
+    def session_summary(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
             return session.summary()
 
     def session_summaries(self) -> list[dict[str, Any]]:

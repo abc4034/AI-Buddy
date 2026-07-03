@@ -1,17 +1,37 @@
 param(
-  [int[]]$Ports = @(8000, 8003, 8010),
+  [string[]]$Ports = @("8000", "8003", "8010"),
   [switch]$WhatIf
 )
 
 $ErrorActionPreference = "Stop"
 
-function Get-LocalDemoListenerProcesses {
+function ConvertTo-PortList {
   param(
-    [int[]]$Ports = @(8000, 8003, 8010)
+    [object[]]$Ports = @("8000", "8003", "8010")
   )
 
+  $portList = @()
+  foreach ($port in @($Ports)) {
+    foreach ($part in ([string]$port -split ",")) {
+      $trimmed = $part.Trim()
+      if ([string]::IsNullOrWhiteSpace($trimmed)) {
+        continue
+      }
+      $portList += [int]$trimmed
+    }
+  }
+
+  return @($portList | Sort-Object -Unique)
+}
+
+function Get-LocalDemoListenerProcesses {
+  param(
+    [object[]]$Ports = @("8000", "8003", "8010")
+  )
+
+  $portList = ConvertTo-PortList -Ports $Ports
   $connections = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-    Where-Object { $Ports -contains [int]$_.LocalPort }
+    Where-Object { $portList -contains [int]$_.LocalPort }
 
   $connections |
     Group-Object OwningProcess |
@@ -25,13 +45,14 @@ function Get-LocalDemoListenerProcesses {
 
 function Invoke-StopLocalDemo {
   param(
-    [int[]]$Ports = @(8000, 8003, 8010),
+    [object[]]$Ports = @("8000", "8003", "8010"),
     [switch]$WhatIf
   )
 
-  $processes = Get-LocalDemoListenerProcesses -Ports $Ports
+  $portList = ConvertTo-PortList -Ports $Ports
+  $processes = Get-LocalDemoListenerProcesses -Ports $portList
   if (-not $processes) {
-    Write-Host "No local demo listener processes found on ports $($Ports -join ', ')."
+    Write-Host "No local demo listener processes found on ports $($portList -join ', ')."
     return
   }
 

@@ -13,6 +13,7 @@ class GatewaySettings:
     http_port: int = 8003
     websocket_port: int = 8000
     advertise_host: str | None = None
+    buddy_core_base_url: str = "http://127.0.0.1:8010"
     session_history_limit: int = 50
 
     def advertised_host(self) -> str:

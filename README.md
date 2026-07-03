@@ -19,7 +19,7 @@ Local Buddy Core service for an ESP32-S3 XiaoZhi-compatible English companion ed
 For the current demo phase, prefer the Windows PowerShell + conda `xiaozhi-env` path.
 
 - Windows local demo runbook: [docs/runbooks/windows-local-demo.md](docs/runbooks/windows-local-demo.md)
-- Buddy Device Gateway v0.1: [docs/runbooks/buddy-device-gateway-v0.1.md](docs/runbooks/buddy-device-gateway-v0.1.md)
+- Buddy Device Gateway v0.1/v0.2: [docs/runbooks/buddy-device-gateway-v0.1.md](docs/runbooks/buddy-device-gateway-v0.1.md)
 - Buddy Core configuration: [docs/buddy-core-configuration.md](docs/buddy-core-configuration.md)
 - Buddy Core vs old Buddy Brain naming: [docs/buddy-core-and-buddy-brain.md](docs/buddy-core-and-buddy-brain.md)
 - Memory dashboard: [docs/runbooks/memory-dashboard.md](docs/runbooks/memory-dashboard.md)

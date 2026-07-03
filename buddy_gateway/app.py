@@ -5,8 +5,9 @@ import logging
 from json import JSONDecodeError
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from buddy_gateway.config import GatewaySettings
+from buddy_gateway.core_client import BuddyCoreClient, BuddyCoreError
 from buddy_gateway.state import GatewayState, epoch_seconds
 
 
@@ -23,9 +24,11 @@ DEFAULT_AUDIO_PARAMS = {
 def create_http_app(
     settings: GatewaySettings | None = None,
     state: GatewayState | None = None,
+    core_client: Any | None = None,
 ) -> FastAPI:
     settings = settings or GatewaySettings()
     state = state or GatewayState(session_history_limit=settings.session_history_limit)
+    core_client = core_client or BuddyCoreClient(base_url=settings.buddy_core_base_url)
     api = FastAPI(title="Buddy Device Gateway")
 
     @api.get("/health")
@@ -47,6 +50,17 @@ def create_http_app(
             "sessions": sessions,
             "ota_requests": state.ota_summaries(),
         }
+
+    @api.post("/debug/sessions/{session_id}/inject-text")
+    async def inject_debug_text(session_id: str, request: Request) -> dict[str, Any]:
+        body = await _safe_json(request)
+        text = body.get("text") if isinstance(body, dict) else None
+        return await _run_debug_text(
+            state=state,
+            core_client=core_client,
+            session_id=session_id,
+            text=text,
+        )
 
     @api.get("/xiaozhi/ota/")
     async def ota_get() -> dict[str, Any]:
@@ -83,9 +97,11 @@ def create_http_app(
 def create_websocket_app(
     settings: GatewaySettings | None = None,
     state: GatewayState | None = None,
+    core_client: Any | None = None,
 ) -> FastAPI:
     settings = settings or GatewaySettings()
     state = state or GatewayState(session_history_limit=settings.session_history_limit)
+    core_client = core_client or BuddyCoreClient(base_url=settings.buddy_core_base_url)
     api = FastAPI(title="Buddy Device Gateway WebSocket")
 
     @api.websocket("/xiaozhi/v1/")
@@ -119,6 +135,7 @@ def create_websocket_app(
                     await _handle_text_message(
                         websocket=websocket,
                         state=state,
+                        core_client=core_client,
                         session_id=session.session_id,
                         text=text,
                     )
@@ -140,6 +157,7 @@ async def _handle_text_message(
     *,
     websocket: WebSocket,
     state: GatewayState,
+    core_client: Any,
     session_id: str,
     text: str,
 ) -> None:
@@ -164,6 +182,14 @@ async def _handle_text_message(
         await websocket.send_json(_welcome_payload(session_id, payload))
     elif message_type == "ping":
         await websocket.send_json({"type": "pong", "session_id": session_id})
+    elif message_type == "debug_text":
+        result = await _run_debug_text_for_websocket(
+            state=state,
+            core_client=core_client,
+            session_id=session_id,
+            text=payload.get("text"),
+        )
+        await websocket.send_json(result)
 
 
 def _welcome_payload(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -193,7 +219,80 @@ def _ota_payload(settings: GatewaySettings, version: str) -> dict[str, Any]:
             "url": settings.websocket_url(),
             "token": "",
         },
-        "message": "Buddy Device Gateway v0.1 is running.",
+        "message": "Buddy Device Gateway v0.2 is running.",
+    }
+
+
+async def _run_debug_text_for_websocket(
+    *,
+    state: GatewayState,
+    core_client: Any,
+    session_id: str,
+    text: Any,
+) -> dict[str, Any]:
+    try:
+        result = await _run_debug_text(
+            state=state,
+            core_client=core_client,
+            session_id=session_id,
+            text=text,
+        )
+        return {"type": "debug_text_result", **result}
+    except HTTPException as exc:
+        error = exc.detail if isinstance(exc.detail, str) else "debug text failed"
+        return {
+            "type": "debug_text_result",
+            "status": "error",
+            "session_id": session_id,
+            "error": error,
+        }
+
+
+async def _run_debug_text(
+    *,
+    state: GatewayState,
+    core_client: Any,
+    session_id: str,
+    text: Any,
+) -> dict[str, Any]:
+    session = state.session_summary(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+    if not isinstance(text, str) or not text.strip():
+        raise HTTPException(status_code=400, detail="text must be a non-empty string")
+
+    user_text = text.strip()
+    try:
+        assistant_text = await core_client.complete_debug_text(
+            device_id=session.get("device_id"),
+            client_id=session.get("client_id"),
+            session_id=session_id,
+            text=user_text,
+        )
+    except (BuddyCoreError, RuntimeError) as exc:
+        turn = state.record_debug_turn(
+            session_id,
+            user_text=user_text,
+            status="error",
+            error=str(exc),
+        )
+        error = turn["error"] if turn else str(exc)
+        raise HTTPException(status_code=502, detail=error) from exc
+
+    turn = state.record_debug_turn(
+        session_id,
+        user_text=user_text,
+        status="ok",
+        assistant_text=assistant_text,
+    )
+    return {
+        "status": "ok",
+        "session_id": session_id,
+        "device_id": session.get("device_id"),
+        "client_id": session.get("client_id"),
+        "user_text": user_text,
+        "assistant_text": assistant_text,
+        "created_at": turn["created_at"] if turn else epoch_seconds(),
     }
 
 

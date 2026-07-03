@@ -20,6 +20,7 @@ SCRIPTS = [
     "stop_local_demo.ps1",
     "print_local_demo_urls.ps1",
     "smoke_chat.ps1",
+    "smoke_gateway_text_loop.ps1",
     "smoke_two_devices.ps1",
 ]
 
@@ -604,7 +605,7 @@ def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
                 "& {",
                 "function global:conda { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
                 f". '{script_path}'",
-                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101'",
+                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101' -BuddyCoreBaseUrl 'http://127.0.0.1:18010'",
                 "}",
             ]
         )
@@ -627,6 +628,8 @@ def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
         "18000",
         "--advertise-host",
         "192.168.0.101",
+        "--buddy-core-base-url",
+        "http://127.0.0.1:18010",
     ]
 
 
@@ -635,6 +638,7 @@ def test_start_buddy_gateway_script_uses_xiaozhi_compatible_ports_by_default():
 
     assert "[int]$HttpPort = 8003" in text
     assert "[int]$WebSocketPort = 8000" in text
+    assert '[string]$BuddyCoreBaseUrl = "http://127.0.0.1:8010"' in text
     assert 'CondaEnv = "xiaozhi-env"' in text
 
 
@@ -662,6 +666,53 @@ def test_start_buddy_gateway_script_auto_detects_physical_lan_advertise_host():
     args = json.loads(result.stdout.splitlines()[-1])
 
     assert args[args.index("--advertise-host") + 1] == "192.168.0.101"
+    assert args[args.index("--buddy-core-base-url") + 1] == "http://127.0.0.1:8010"
+
+
+def test_smoke_gateway_text_loop_injects_text_into_latest_session_and_prints_memory_url():
+    script_path = SCRIPTS_DIR / "smoke_gateway_text_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:Calls = @()",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param(",
+                "    [string]$Uri,",
+                "    [string]$Method = 'Get',",
+                "    $Body,",
+                "    [string]$ContentType,",
+                "    [switch]$UseBasicParsing",
+                "  )",
+                "  $script:Calls += [pscustomobject]@{ Uri = $Uri; Method = $Method; Body = $Body; ContentType = $ContentType }",
+                "  if ($Uri -like '*/debug/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\"}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/sessions/session-a/inject-text') {",
+                "    return New-MockWebResponse '{\"status\":\"ok\",\"assistant_text\":\"\\u6211\\u559c\\u6b22\\u82f9\\u679c\\u3002\"}'",
+                "  }",
+                "  throw \"unexpected uri $Uri\"",
+                "}",
+                "Invoke-SmokeGatewayTextLoop -GatewayBaseUrl 'http://127.0.0.1:8003' -MemoryBaseUrl 'http://127.0.0.1:8010/memory' -Text 'I like apples'",
+                "$script:Calls | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert "Assistant: \u6211\u559c\u6b22\u82f9\u679c\u3002" in result.stdout
+    assert "Memory URL: http://127.0.0.1:8010/memory?device_id=fc%3A01" in result.stdout
+    calls = json.loads(result.stdout.splitlines()[-1])
+    assert calls[0]["Uri"] == "http://127.0.0.1:8003/debug/sessions"
+    assert calls[1]["Uri"] == "http://127.0.0.1:8003/debug/sessions/session-a/inject-text"
+    assert json.loads(calls[1]["Body"]) == {"text": "I like apples"}
 
 
 def test_stop_local_demo_script_stops_unique_listener_processes_only():
@@ -691,6 +742,50 @@ def test_stop_local_demo_script_stops_unique_listener_processes_only():
     )
 
     assert json.loads(result.stdout.splitlines()[-1]) == [111, 222]
+
+
+def test_stop_local_demo_script_normalizes_comma_separated_ports():
+    script_path = SCRIPTS_DIR / "stop_local_demo.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "ConvertTo-PortList -Ports '8000,8003' | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert json.loads(result.stdout.splitlines()[-1]) == [8000, 8003]
+
+
+def test_stop_local_demo_script_entrypoint_splits_comma_separated_ports():
+    script_path = SCRIPTS_DIR / "stop_local_demo.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function Get-NetTCPConnection {",
+                "  @(",
+                "    [pscustomobject]@{ LocalPort = 8000; OwningProcess = 111 },",
+                "    [pscustomobject]@{ LocalPort = 8003; OwningProcess = 111 },",
+                "    [pscustomobject]@{ LocalPort = 8010; OwningProcess = 222 }",
+                "  )",
+                "}",
+                "function Get-Process { param([int]$Id) [pscustomobject]@{ Id = $Id; ProcessName = \"python\" } }",
+                "$global:Stopped = @()",
+                "function Stop-Process { param([int]$Id, [switch]$Force) $global:Stopped += $Id }",
+                f"& '{script_path}' -Ports 8000,8003 | Out-Null",
+                "$global:Stopped | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert json.loads(result.stdout.splitlines()[-1]) == 111
 
 
 def test_backup_local_demo_data_copies_existing_database_and_config(tmp_path: Path):
