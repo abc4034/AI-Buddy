@@ -69,6 +69,16 @@ function Test-PrivateIPv4 {
   return $false
 }
 
+function Test-VirtualLanInterface {
+  param([string]$InterfaceAlias)
+
+  if ([string]::IsNullOrWhiteSpace($InterfaceAlias)) {
+    return $false
+  }
+
+  return $InterfaceAlias -match "VMware|VirtualBox|vEthernet|Docker|Loopback|Hyper-V|WSL|Npcap"
+}
+
 function Select-PreferredLanIp {
   param(
     [Parameter(ValueFromPipeline = $true)]
@@ -86,26 +96,35 @@ function Select-PreferredLanIp {
 
     if ($InputObject -is [string]) {
       $ipAddress = $InputObject
+      $interfaceAlias = ""
     }
     else {
       $ipAddress = $InputObject.IPAddress
+      $interfaceAlias = $InputObject.InterfaceAlias
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ipAddress) -and (Test-PrivateIPv4 -IpAddress $ipAddress)) {
-      $candidates += $ipAddress
+      $candidates += [pscustomobject]@{
+        IPAddress = $ipAddress
+        InterfaceAlias = $interfaceAlias
+      }
     }
   }
 
   end {
     $preferred = $candidates |
-      Where-Object { $_ -eq "192.168.2.9" } |
+      Where-Object { -not (Test-VirtualLanInterface -InterfaceAlias $_.InterfaceAlias) } |
       Select-Object -First 1
 
     if (-not $preferred) {
-      throw "Could not auto-detect demo host IP 192.168.2.9 from private LAN candidates. Pass -HostIp explicitly."
+      $preferred = $candidates | Select-Object -First 1
     }
 
-    return $preferred
+    if (-not $preferred) {
+      throw "Could not auto-detect a usable LAN IPv4 address. Pass -HostIp explicitly."
+    }
+
+    return $preferred.IPAddress
   }
 }
 
@@ -116,8 +135,8 @@ function Get-DefaultLanIp {
 function Assert-DemoHostIp {
   param([string]$IpAddress)
 
-  if ($IpAddress -ne "192.168.2.9") {
-    throw "HostIp must be the Task 2 demo host IP 192.168.2.9."
+  if (-not (Test-PrivateIPv4 -IpAddress $IpAddress)) {
+    throw "HostIp must be a private LAN IPv4 address reachable by the ESP32."
   }
 
   return $IpAddress

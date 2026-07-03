@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+from buddy_brain.config import DeviceProfileConfig
 from buddy_brain.models import Episode, MemoryPatch, Profile
 
 
@@ -28,10 +30,12 @@ class BuddyRepository:
         database_path: Path,
         demo_user_id: str = "demo-mia",
         demo_device_id: str = "esp32-fc012ccf1754",
+        device_profiles: dict[str, DeviceProfileConfig] | None = None,
     ):
         self.database_path = Path(database_path)
         self.demo_user_id = demo_user_id
         self.demo_device_id = demo_device_id
+        self.device_profiles = device_profiles or {}
 
     def _connect(self) -> sqlite3.Connection:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,8 +111,37 @@ class BuddyRepository:
             )
 
     def ensure_demo_user(self) -> Profile:
+        return self.ensure_profile_for_device(
+            self.demo_device_id,
+            client_id=self.demo_device_id,
+            user_id=self.demo_user_id,
+        )
+
+    def ensure_profile_for_device(
+        self,
+        device_id: str,
+        client_id: str | None = None,
+        user_id: str | None = None,
+    ) -> Profile:
+        clean_device_id = device_id.strip() or self.demo_device_id
         now = int(time.time())
-        profile = DEFAULT_PROFILE.model_copy(update={"user_id": self.demo_user_id})
+        existing = self._device_row(clean_device_id)
+        if existing is not None:
+            next_client_id = client_id or existing["client_id"] or clean_device_id
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    UPDATE devices
+                    SET client_id = ?, last_seen_at = ?
+                    WHERE device_id = ?
+                    """,
+                    (next_client_id, now, clean_device_id),
+                )
+            self._apply_configured_profile(clean_device_id, existing["user_id"], now)
+            return self.get_profile(existing["user_id"])
+
+        resolved_user_id = user_id or _user_id_for_device(clean_device_id)
+        profile = self._default_profile_for_device(clean_device_id, resolved_user_id)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -149,8 +182,8 @@ class BuddyRepository:
                     last_seen_at = excluded.last_seen_at
                 """,
                 (
-                    self.demo_device_id,
-                    self.demo_device_id,
+                    clean_device_id,
+                    client_id or clean_device_id,
                     profile.user_id,
                     now,
                     now,
@@ -293,12 +326,122 @@ class BuddyRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_device(self, device_id: str) -> dict[str, Any]:
+    def reset_demo_user(self) -> Profile:
+        return self.reset_device_memory(self.demo_device_id)
+
+    def reset_device_memory(self, device_id: str) -> Profile:
+        profile = self.ensure_profile_for_device(device_id)
+        user_id = profile.user_id
+        now = int(time.time())
+        default_profile = self._default_profile_for_device(device_id, user_id)
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+            conn.execute("DELETE FROM memory_events WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM episodes WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM profile WHERE user_id = ?", (user_id,))
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO users (user_id, display_name, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (default_profile.user_id, default_profile.name, now, now),
+            )
+            conn.execute(
+                """
+                UPDATE users
+                SET display_name = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (default_profile.name, now, default_profile.user_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO profile (
+                    user_id, name, age_group, english_level, interests_json,
+                    language_preference, learning_goals_json, notes_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    default_profile.user_id,
+                    default_profile.name,
+                    default_profile.age_group,
+                    default_profile.english_level,
+                    json.dumps(default_profile.interests, ensure_ascii=False),
+                    default_profile.language_preference,
+                    json.dumps(default_profile.learning_goals, ensure_ascii=False),
+                    json.dumps(default_profile.notes, ensure_ascii=False),
+                    now,
+                ),
+            )
+        return self.get_profile(user_id)
+
+    def get_device(self, device_id: str) -> dict[str, Any]:
+        row = self._device_row(device_id)
         if row is None:
             raise KeyError(f"device not found for device_id={device_id}")
         return dict(row)
+
+    def list_devices(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT d.device_id, d.client_id, d.user_id, d.created_at, d.last_seen_at,
+                       p.name AS profile_name
+                FROM devices d
+                LEFT JOIN profile p ON p.user_id = d.user_id
+                ORDER BY d.last_seen_at DESC, d.device_id ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def device_persona(self, device_id: str) -> str | None:
+        config = self.device_profiles.get(device_id)
+        if config and config.persona:
+            return config.persona
+        return None
+
+    def _device_row(self, device_id: str) -> sqlite3.Row | None:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT * FROM devices WHERE device_id = ?",
+                (device_id,),
+            ).fetchone()
+
+    def _default_profile_for_device(self, device_id: str, user_id: str) -> Profile:
+        config = self.device_profiles.get(device_id)
+        if config is None:
+            return DEFAULT_PROFILE.model_copy(update={"user_id": user_id})
+        return DEFAULT_PROFILE.model_copy(
+            update={
+                "user_id": user_id,
+                "name": config.child_name,
+                "age_group": config.age_group,
+                "english_level": config.english_level,
+            }
+        )
+
+    def _apply_configured_profile(self, device_id: str, user_id: str, timestamp: int) -> None:
+        config = self.device_profiles.get(device_id)
+        if config is None:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET display_name = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (config.child_name, timestamp, user_id),
+            )
+            conn.execute(
+                """
+                UPDATE profile
+                SET name = ?, age_group = ?, english_level = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (config.child_name, config.age_group, config.english_level, timestamp, user_id),
+            )
 
 
 def _merge_unique(existing: list[str], incoming: list[str]) -> list[str]:
@@ -310,3 +453,8 @@ def _merge_unique(existing: list[str], incoming: list[str]) -> list[str]:
             values.append(clean)
             seen.add(clean.casefold())
     return values
+
+
+def _user_id_for_device(device_id: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", device_id.casefold()).strip("-")
+    return f"device-{slug or 'unknown'}"

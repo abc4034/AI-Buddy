@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ai-buddy-brain"
 version = "0.1.0"
-description = "Local Buddy Brain service for XiaoZhi-compatible English companion education demo"
+description = "Local Buddy Core service for XiaoZhi-compatible English companion education demo"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115,<1",

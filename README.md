@@ -1,17 +1,32 @@
 # AI Buddy
 
-Local Buddy Brain service for an ESP32-S3 XiaoZhi-compatible English companion education demo.
+Local Buddy Core service for an ESP32-S3 XiaoZhi-compatible English companion education demo.
 
 ## First Demo Scope
 
-- Runs locally on Windows or Ubuntu 22.
+- Current supported demo path: Windows PowerShell with conda `xiaozhi-env`.
+- Ubuntu 22 and venv setup are kept as future portability notes, not the current demo acceptance path.
 - Exposes an OpenAI-compatible `/v1/chat/completions` endpoint.
 - Uses DeepSeek through an OpenAI-compatible client by default.
 - Stores long-term child learning memory in `data/buddy_memory.db`.
+- Uses `metadata.device_id` to separate child profiles and memory.
+- Reads the first persona from config with `PERSONA=cheerful` by default.
 - Keeps local model deployment available by changing environment variables.
 - Does not require speaker output on the current hardware.
 
+## Docs
+
+For the current demo phase, prefer the Windows PowerShell + conda `xiaozhi-env` path.
+
+- Windows local demo runbook: [docs/runbooks/windows-local-demo.md](docs/runbooks/windows-local-demo.md)
+- Buddy Core configuration: [docs/buddy-core-configuration.md](docs/buddy-core-configuration.md)
+- Buddy Core vs old Buddy Brain naming: [docs/buddy-core-and-buddy-brain.md](docs/buddy-core-and-buddy-brain.md)
+- Memory dashboard: [docs/runbooks/memory-dashboard.md](docs/runbooks/memory-dashboard.md)
+- Stabilization roadmap: [docs/superpowers/plans/2026-07-03-buddy-core-stabilization-roadmap.md](docs/superpowers/plans/2026-07-03-buddy-core-stabilization-roadmap.md)
+
 ## Setup
+
+The commands below are kept as setup notes. The currently supported hardware demo path is the Windows runbook above.
 
 Use Python 3.10 or newer.
 
@@ -46,6 +61,7 @@ The default hosted provider values in `.env.example` are:
 ```dotenv
 OPENAI_BASE_URL=https://api.deepseek.com
 MODEL_NAME=deepseek-v4-flash
+PERSONA=cheerful
 ```
 
 ## Run
@@ -53,7 +69,7 @@ MODEL_NAME=deepseek-v4-flash
 Windows PowerShell:
 
 ```powershell
-uvicorn buddy_brain.app:app --host 0.0.0.0 --port 8010
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_core.ps1
 ```
 
 Ubuntu 22.04:
@@ -66,7 +82,7 @@ uvicorn buddy_brain.app:app --host 0.0.0.0 --port 8010
 ## Test
 
 ```powershell
-py -3.10 -m pytest -v
+conda run -n xiaozhi-env python -m pytest -q
 ```
 
 ```bash
@@ -101,31 +117,34 @@ MODEL_NAME=local-model-name
 
 ## XiaoZhi Server Handoff
 
-For this first local bridge demo, use the pinned Task 2 host `192.168.2.9` so the Buddy Brain, WebSocket, and OTA URLs all stay aligned with the current scripts.
+For this local bridge demo, let the scripts auto-detect the current LAN host IP. If auto-detection ever picks the wrong adapter, pass `-HostIp <host-lan-ip>` explicitly.
 
 Point the XiaoZhi server LLM provider at:
 
 ```text
-BuddyBrainLLM:
+BuddyCoreLLM:
   type: openai
-  base_url: http://192.168.2.9:8010/v1
+  base_url: http://<host-lan-ip>:8010/v1
   api_key: local
   model_name: deepseek-v4-flash
+  forward_device_metadata: true
 ```
 
-Keep XiaoZhi server memory disabled for this demo. Buddy Brain owns profile and memory persistence.
+Keep XiaoZhi server memory disabled for this demo. Buddy Core owns profile and memory persistence.
 
 ## XiaoZhi Local Bridge
 
-This phase keeps the ESP32 firmware and XiaoZhi device protocol, but routes XiaoZhi server LLM calls to Buddy Brain.
+This phase keeps the ESP32 firmware and XiaoZhi device protocol, but routes XiaoZhi server LLM calls to Buddy Core.
+
+See the full Windows runbook: `docs/runbooks/windows-local-demo.md`.
 
 Local URLs for the current Windows host:
 
 ```text
-Buddy Brain: http://192.168.2.9:8010
-Buddy Brain OpenAI base_url: http://192.168.2.9:8010/v1
-XiaoZhi WebSocket: ws://192.168.2.9:8000/xiaozhi/v1/
-XiaoZhi OTA: http://192.168.2.9:8003/xiaozhi/ota/
+Buddy Core: http://<host-lan-ip>:8010
+Buddy Core OpenAI base_url: http://<host-lan-ip>:8010/v1
+XiaoZhi WebSocket: ws://<host-lan-ip>:8000/xiaozhi/v1/
+XiaoZhi OTA: http://<host-lan-ip>:8003/xiaozhi/ota/
 ```
 
 Print the current URLs:
@@ -143,16 +162,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_xiaozhi_serv
 Render XiaoZhi `data/.config.yaml`:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\render_xiaozhi_config.ps1 -HostIp 192.168.2.9
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\render_xiaozhi_config.ps1
 ```
 
-Start Buddy Brain in terminal A:
+Start Buddy Core in terminal A:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_brain.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_core.ps1
 ```
 
-Smoke test Buddy Brain in terminal B:
+Smoke test Buddy Core in terminal B:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_chat.ps1
@@ -164,18 +183,36 @@ Start XiaoZhi server in terminal C after its conda environment and dependencies 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_xiaozhi_server.ps1
 ```
 
+Check local demo status:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_local_demo_status.ps1
+```
+
+Back up memory and XiaoZhi config before reset or demo:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\backup_local_demo_data.ps1
+```
+
+Stop the local demo listeners:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop_local_demo.ps1
+```
+
 The generated XiaoZhi config sets:
 
 ```yaml
 selected_module:
-  LLM: BuddyBrainLLM
+  LLM: BuddyCoreLLM
   Memory: nomem
   Intent: nointent
 ```
 
 Hardware routing pause point:
 
-- Do not flash firmware until Buddy Brain and XiaoZhi server both start successfully.
+- Do not flash firmware until Buddy Core and XiaoZhi server both start successfully.
 - The current ESP32 firmware still uses `https://api.tenclass.net/xiaozhi/ota/`.
-- If no runtime OTA override is available, firmware must be rebuilt for `bread-compact-wifi-lcd` with `CONFIG_OTA_URL=http://192.168.2.9:8003/xiaozhi/ota/`.
+- If no runtime OTA override is available, firmware must be rebuilt for `bread-compact-wifi-lcd` with the `CONFIG_OTA_URL` printed by `print_local_demo_urls.ps1`.
 - When flashing is needed, stop and ask the user to plug in USB and press `BOOT` / `RESET`.

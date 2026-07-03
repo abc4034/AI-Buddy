@@ -18,7 +18,8 @@ def test_render_config_uses_lan_ip_for_all_device_facing_urls():
     assert "base_url: http://192.168.2.9:8010/v1" in rendered
     assert "type: openai" in rendered
     assert "model_name: deepseek-v4-flash" in rendered
-    assert "LLM: BuddyBrainLLM" in rendered
+    assert "LLM: BuddyCoreLLM" in rendered
+    assert "forward_device_metadata: true" in rendered
     assert "Memory: nomem" in rendered
     assert "Intent: nointent" in rendered
     assert "api_key: local" in rendered
@@ -39,7 +40,7 @@ def test_write_config_creates_parent_directories(tmp_path):
 
     assert written == output
     assert output.exists()
-    assert "BuddyBrainLLM" in output.read_text(encoding="utf-8")
+    assert "BuddyCoreLLM" in output.read_text(encoding="utf-8")
 
 
 def test_default_output_path_points_to_xiaozhi_runtime_data():

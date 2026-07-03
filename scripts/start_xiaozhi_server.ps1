@@ -1,6 +1,6 @@
 param(
   [string]$ServerDir = ".run\xiaozhi-esp32-server\main\xiaozhi-server",
-  [string]$CondaEnv = "xiaozhi-esp32-server"
+  [string]$CondaEnv = "xiaozhi-env"
 )
 
 $ErrorActionPreference = "Stop"
@@ -76,7 +76,7 @@ function Assert-XiaoZhiServerPreflight {
 function Invoke-StartXiaoZhiServer {
   param(
     [string]$ServerDir,
-    [string]$CondaEnv = "xiaozhi-esp32-server"
+    [string]$CondaEnv = "xiaozhi-env"
   )
 
   $resolvedServerDir = Get-ResolvedXiaoZhiServerDir -ServerDir $ServerDir
@@ -85,7 +85,7 @@ function Invoke-StartXiaoZhiServer {
   Write-Host "Starting XiaoZhi server from $resolvedServerDir with conda env $CondaEnv"
   Push-Location $resolvedServerDir
   try {
-    & conda run -n $CondaEnv python app.py
+    & conda run --no-capture-output -n $CondaEnv python app.py
   }
   finally {
     Pop-Location

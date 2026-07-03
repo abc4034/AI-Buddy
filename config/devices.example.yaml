@@ -1,0 +1,18 @@
+devices:
+  debug-device-a:
+    child_name: Mia
+    age_group: primary school
+    english_level: beginner
+    persona: cheerful
+
+  debug-device-b:
+    child_name: Luna
+    age_group: kindergarten
+    english_level: starter
+    persona: calm
+
+  esp32-fc012ccf1754:
+    child_name: Real Demo Child
+    age_group: primary school
+    english_level: beginner
+    persona: coach

@@ -8,7 +8,7 @@ server:
     enabled: false
 
 selected_module:
-  LLM: BuddyBrainLLM
+  LLM: BuddyCoreLLM
   Memory: nomem
   Intent: nointent
 
@@ -17,13 +17,14 @@ Intent:
     type: nointent
 
 LLM:
-  BuddyBrainLLM:
+  BuddyCoreLLM:
     type: openai
     base_url: http://${HOST_IP}:8010/v1
     model_name: deepseek-v4-flash
     api_key: local
     temperature: 0.7
     max_tokens: 300
+    forward_device_metadata: true
 
 prompt: |
   You are Buddy, a warm English companion for a primary-school beginner.

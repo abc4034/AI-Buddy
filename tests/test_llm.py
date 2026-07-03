@@ -1,6 +1,5 @@
+import asyncio
 from types import SimpleNamespace
-
-import pytest
 
 from buddy_brain.config import Settings
 from buddy_brain.llm import OpenAICompatibleProvider
@@ -33,15 +32,16 @@ class FakeClient:
         self.chat = SimpleNamespace(completions=self.completions)
 
 
-@pytest.mark.asyncio
-async def test_provider_sends_openai_compatible_chat_request():
+def test_provider_sends_openai_compatible_chat_request():
     client = FakeClient()
     settings = Settings(openai_api_key="test-key")
     provider = OpenAICompatibleProvider(settings=settings, client=client)
 
-    result = await provider.complete(
-        messages=[{"role": "user", "content": "hello"}],
-        temperature=0.2,
+    result = asyncio.run(
+        provider.complete(
+            messages=[{"role": "user", "content": "hello"}],
+            temperature=0.2,
+        )
     )
 
     assert result == "Hi there"
@@ -50,16 +50,18 @@ async def test_provider_sends_openai_compatible_chat_request():
     assert client.completions.calls[0]["temperature"] == 0.2
 
 
-@pytest.mark.asyncio
-async def test_provider_stream_yields_text_deltas():
+def test_provider_stream_yields_text_deltas():
     client = FakeClient()
     settings = Settings(openai_api_key="test-key")
     provider = OpenAICompatibleProvider(settings=settings, client=client)
 
-    chunks = [
-        chunk
-        async for chunk in provider.stream(messages=[{"role": "user", "content": "hello"}])
-    ]
+    async def collect_chunks():
+        return [
+            chunk
+            async for chunk in provider.stream(messages=[{"role": "user", "content": "hello"}])
+        ]
+
+    chunks = asyncio.run(collect_chunks())
 
     assert chunks == ["Hi", " there"]
     assert client.completions.calls[0]["stream"] is True
