@@ -27,4 +27,4 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.hatch.build.targets.wheel]
-packages = ["buddy_brain"]
+packages = ["buddy_brain", "buddy_gateway"]

@@ -53,15 +53,25 @@ Buddy Core 负责业务核心：
 
 一句话讲清楚：当前阶段替换的是“业务大脑”，不是整个小智服务器。
 
-## 和阶段 C 的关系
+## 和 Buddy Device Gateway 的关系
 
-阶段 C 的 Buddy Device Gateway 现在只写路线图，不执行实现。它的目标是未来逐步替换 XiaoZhi Server 的协议层和音频层，但默认前提仍然是继续兼容现有 ESP32 小智固件。
+Buddy Device Gateway 是下一阶段逐步替换 XiaoZhi Server 的新协议服务。v0.1 已经开始实现，但只做到协议骨架：
 
-在阶段 A/B 稳定前，不把这些事情作为当前交付：
+- 保持 OTA/HTTP `8003` 和 WebSocket `8000` 端口兼容。
+- 让 ESP32 从新 Gateway 获取 `/xiaozhi/v1/` WebSocket 地址。
+- 记录真实硬件的 `device-id`、`client-id`、`hello`、`listen` 和音频 bytes。
+- 暂时不做 Opus 解码、ASR、Buddy Core 调用、TTS 或音频回复。
+
+所以现阶段有两条清晰路径：
+
+- 已跑通语音闭环的 demo：继续使用 XiaoZhi Server 作为协议层和音频层，Buddy Core 作为业务核心。
+- 新的替换路线：使用 Buddy Device Gateway v0.1 验证协议入口和硬件连接。
+
+仍然不把这些事情作为 v0.1 交付：
 
 - 不重写 ESP32 固件。
-- 不立刻替换 XiaoZhi Server。
-- 不自研完整 OTA/WebSocket/Opus/ASR/TTS 链路。
+- 不声称已经完整替换 XiaoZhi Server。
+- 不自研完整 OTA/WebSocket/Opus/ASR/TTS 闭环。
 - 不把 Python package 从 `buddy_brain` 立刻改名。
 
 ## 对外怎么说
@@ -72,6 +82,7 @@ Buddy Core 负责业务核心：
 Buddy Core 是从原 Buddy Brain 服务演进来的业务核心。
 当前代码包名仍保留 buddy_brain，是为了降低重命名风险。
 XiaoZhi Server 现在仍作为协议和音频层，Buddy Core 负责 profile、persona、memory 和 LLM。
+Buddy Device Gateway v0.1 已开始验证替换 XiaoZhi Server 的协议入口，但还不是完整语音闭环。
 ```
 
 避免说法：
@@ -80,4 +91,5 @@ XiaoZhi Server 现在仍作为协议和音频层，Buddy Core 负责 profile、p
 我们已经完全替换了 XiaoZhi Server。
 Buddy Brain 和 Buddy Core 是两个服务。
 当前阶段要重写 ESP32 固件。
+Buddy Device Gateway v0.1 已经支持 ASR/TTS 回复。
 ```

@@ -14,6 +14,7 @@ SCRIPTS = [
     "render_xiaozhi_config.ps1",
     "setup_xiaozhi_server.ps1",
     "start_buddy_core.ps1",
+    "start_buddy_gateway.ps1",
     "start_buddy_brain.ps1",
     "start_xiaozhi_server.ps1",
     "stop_local_demo.ps1",
@@ -592,6 +593,75 @@ def test_start_buddy_core_script_delegates_to_existing_buddy_core_entrypoint():
     assert "start_buddy_brain.ps1" in text
     assert "Invoke-StartBuddyCore" in text
     assert 'CondaEnv = "xiaozhi-env"' in text
+
+
+def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
+    script_path = SCRIPTS_DIR / "start_buddy_gateway.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:conda { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                f". '{script_path}'",
+                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101'",
+                "}",
+            ]
+        )
+    )
+    args = json.loads(result.stdout.splitlines()[-1])
+
+    assert [str(arg) for arg in args] == [
+        "run",
+        "--no-capture-output",
+        "-n",
+        "xiaozhi-env",
+        "python",
+        "-m",
+        "buddy_gateway.server",
+        "--host",
+        "127.0.0.1",
+        "--http-port",
+        "18003",
+        "--websocket-port",
+        "18000",
+        "--advertise-host",
+        "192.168.0.101",
+    ]
+
+
+def test_start_buddy_gateway_script_uses_xiaozhi_compatible_ports_by_default():
+    text = (SCRIPTS_DIR / "start_buddy_gateway.ps1").read_text(encoding="utf-8")
+
+    assert "[int]$HttpPort = 8003" in text
+    assert "[int]$WebSocketPort = 8000" in text
+    assert 'CondaEnv = "xiaozhi-env"' in text
+
+
+def test_start_buddy_gateway_script_auto_detects_physical_lan_advertise_host():
+    script_path = SCRIPTS_DIR / "start_buddy_gateway.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:conda { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                f". '{script_path}'",
+                "function Get-NetIPAddress {",
+                "  @(",
+                "    [pscustomobject]@{ IPAddress = '192.168.254.1'; InterfaceAlias = 'VMware Network Adapter VMnet8' },",
+                "    [pscustomobject]@{ IPAddress = '192.168.0.101'; InterfaceAlias = 'WLAN' },",
+                "    [pscustomobject]@{ IPAddress = '10.0.0.8'; InterfaceAlias = 'vEthernet (Default Switch)' }",
+                "  )",
+                "}",
+                "Invoke-StartBuddyGateway -HttpPort 18003 -WebSocketPort 18000",
+                "}",
+            ]
+        )
+    )
+    args = json.loads(result.stdout.splitlines()[-1])
+
+    assert args[args.index("--advertise-host") + 1] == "192.168.0.101"
 
 
 def test_stop_local_demo_script_stops_unique_listener_processes_only():
