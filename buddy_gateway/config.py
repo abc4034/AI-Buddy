@@ -15,6 +15,8 @@ class GatewaySettings:
     advertise_host: str | None = None
     buddy_core_base_url: str = "http://127.0.0.1:8010"
     session_history_limit: int = 50
+    audio_artifact_dir: str = "data/gateway_audio"
+    audio_session_limit: int = 20
 
     def advertised_host(self) -> str:
         if self.advertise_host:

@@ -1,6 +1,9 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from buddy_gateway.app import create_http_app, create_websocket_app
+from buddy_gateway.audio_store import AudioArtifactStore
 from buddy_gateway.config import GatewaySettings
 from buddy_gateway.state import GatewayState
 
@@ -27,7 +30,7 @@ class FailingBuddyCoreClient:
         raise RuntimeError("buddy core unavailable")
 
 
-def test_gateway_ota_get_returns_compatible_websocket_payload():
+def test_gateway_ota_get_returns_xiaozhi_style_text_health():
     settings = GatewaySettings(advertise_host="192.168.0.101", http_port=18003, websocket_port=18000)
     state = GatewayState()
     client = TestClient(create_http_app(settings=settings, state=state))
@@ -35,11 +38,9 @@ def test_gateway_ota_get_returns_compatible_websocket_payload():
     response = client.get("/xiaozhi/ota/")
 
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/json")
-    payload = response.json()
-    assert payload["websocket"]["url"] == "ws://192.168.0.101:18000/xiaozhi/v1/"
-    assert payload["firmware"]["url"] == ""
-    assert payload["message"] == "Buddy Device Gateway v0.2 is running."
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "OTA" in response.text
+    assert "ws://192.168.0.101:18000/xiaozhi/v1/" in response.text
 
 
 def test_gateway_ota_post_returns_compatible_websocket_payload():
@@ -61,6 +62,7 @@ def test_gateway_ota_post_returns_compatible_websocket_payload():
     assert payload["firmware"]["url"] == ""
     assert payload["websocket"]["url"] == "ws://192.168.0.101:18000/xiaozhi/v1/"
     assert payload["websocket"]["token"] == ""
+    assert payload["message"] == "Buddy Device Gateway is running."
 
     health = client.get("/health").json()
     assert health["status"] == "ok"
@@ -89,10 +91,37 @@ def test_gateway_ota_post_accepts_firmware_application_version_shape():
     assert state.ota_summaries()[0]["version"] == "2.2.6"
 
 
-def test_gateway_websocket_records_text_messages_and_audio_bytes():
-    settings = GatewaySettings(advertise_host="127.0.0.1", http_port=18003, websocket_port=18000)
+def test_gateway_ota_post_prefers_xiaozhi_version_headers_over_body():
+    settings = GatewaySettings(advertise_host="192.168.0.101", http_port=18003, websocket_port=18000)
     state = GatewayState()
-    client = TestClient(create_websocket_app(settings=settings, state=state))
+    client = TestClient(create_http_app(settings=settings, state=state))
+
+    response = client.post(
+        "/xiaozhi/ota/",
+        headers={"device-id": "fc:01", "firmware-version": "3.1.4"},
+        json={
+            "version": "1.2.3",
+            "application": {"version": "2.2.6"},
+            "board": {"type": "bread-compact-wifi-lcd"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["firmware"]["version"] == "3.1.4"
+    assert state.ota_summaries()[0]["version"] == "3.1.4"
+
+
+def test_gateway_websocket_records_text_messages_and_audio_bytes(tmp_path: Path):
+    settings = GatewaySettings(
+        advertise_host="127.0.0.1",
+        http_port=18003,
+        websocket_port=18000,
+        audio_artifact_dir=str(tmp_path),
+    )
+    state = GatewayState()
+    audio_store = AudioArtifactStore(base_dir=tmp_path)
+    client = TestClient(create_websocket_app(settings=settings, state=state, audio_store=audio_store))
 
     with client.websocket_connect(
         "/xiaozhi/v1/",

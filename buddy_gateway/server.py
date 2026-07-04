@@ -42,7 +42,7 @@ async def serve(settings: GatewaySettings) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Buddy Device Gateway v0.2")
+    parser = argparse.ArgumentParser(description="Run Buddy Device Gateway v0.3")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host for HTTP and WebSocket servers.")
     parser.add_argument("--http-port", type=int, default=8003, help="HTTP OTA port.")
     parser.add_argument("--websocket-port", type=int, default=8000, help="WebSocket port.")
@@ -57,6 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Host/IP returned in OTA websocket.url. Defaults to LAN auto-detection.",
     )
     parser.add_argument("--session-history-limit", type=int, default=50, help="Recent session history size.")
+    parser.add_argument("--audio-artifact-dir", default="data/gateway_audio", help="Directory for captured Opus/WAV debug artifacts.")
+    parser.add_argument("--audio-session-limit", type=int, default=20, help="Recent audio artifact session limit.")
     return parser
 
 
@@ -70,6 +72,8 @@ def main() -> None:
         advertise_host=args.advertise_host,
         buddy_core_base_url=args.buddy_core_base_url,
         session_history_limit=args.session_history_limit,
+        audio_artifact_dir=args.audio_artifact_dir,
+        audio_session_limit=args.audio_session_limit,
     )
     asyncio.run(serve(settings))
 

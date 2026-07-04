@@ -13,13 +13,28 @@ Local Buddy Core service for an ESP32-S3 XiaoZhi-compatible English companion ed
 - Reads the first persona from config with `PERSONA=cheerful` by default.
 - Keeps local model deployment available by changing environment variables.
 - Does not require speaker output on the current hardware.
+- Keeps the existing XiaoZhi Server bridge path for the first complete hardware voice loop.
+- Adds Buddy Device Gateway as the replacement track for XiaoZhi Server. Gateway v0.3 can handle OTA, WebSocket, protocol messages, Opus audio capture, and WAV decoding for debugging.
+
+## Current Replacement Status
+
+The project currently has two runnable hardware paths:
+
+- XiaoZhi Server bridge: ESP32 still talks to XiaoZhi Server, while XiaoZhi Server forwards LLM calls into Buddy Core. This is the current full voice-loop demo path.
+- Buddy Device Gateway: ESP32 talks directly to our new Gateway on the same XiaoZhi-compatible ports, `8003` for OTA and `8000` for WebSocket. v0.3 validates protocol ingress and captured audio, but still does not run ASR/TTS or send audio replies back to the ESP32.
+
+Gateway milestones now in the repo:
+
+- v0.1: OTA and `/xiaozhi/v1/` WebSocket skeleton, hardware `device-id/client-id`, `hello/listen`, and binary audio frame counters.
+- v0.2: debug text loop from Gateway to Buddy Core `/v1/chat/completions`, carrying `device_id`, `client_id`, `session_id`, and `source: buddy_gateway_debug`.
+- v0.3: XiaoZhi-style OTA compatibility tweaks, raw Opus and strict 16-byte audio header handling, per-session audio artifacts under `data/gateway_audio`, and debug WAV decoding.
 
 ## Docs
 
 For the current demo phase, prefer the Windows PowerShell + conda `xiaozhi-env` path.
 
 - Windows local demo runbook: [docs/runbooks/windows-local-demo.md](docs/runbooks/windows-local-demo.md)
-- Buddy Device Gateway v0.1/v0.2: [docs/runbooks/buddy-device-gateway-v0.1.md](docs/runbooks/buddy-device-gateway-v0.1.md)
+- Buddy Device Gateway v0.1/v0.2/v0.3: [docs/runbooks/buddy-device-gateway-v0.1.md](docs/runbooks/buddy-device-gateway-v0.1.md)
 - Buddy Core configuration: [docs/buddy-core-configuration.md](docs/buddy-core-configuration.md)
 - Buddy Core vs old Buddy Brain naming: [docs/buddy-core-and-buddy-brain.md](docs/buddy-core-and-buddy-brain.md)
 - Memory dashboard: [docs/runbooks/memory-dashboard.md](docs/runbooks/memory-dashboard.md)
@@ -79,6 +94,49 @@ Ubuntu 22.04:
 source .venv/bin/activate
 uvicorn buddy_brain.app:app --host 0.0.0.0 --port 8010
 ```
+
+## Buddy Device Gateway
+
+Use this path when testing the XiaoZhi Server replacement work. Stop XiaoZhi Server first because Gateway uses the same hardware ports:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop_local_demo.ps1 -Ports 8000,8003
+```
+
+Start Gateway with the computer LAN IP that the ESP32 can reach:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_gateway.ps1 -AdvertiseHost <host-lan-ip>
+```
+
+Set the ESP32 OTA URL to:
+
+```text
+http://<host-lan-ip>:8003/xiaozhi/ota/
+```
+
+Useful Gateway checks:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8003/xiaozhi/ota/ -UseBasicParsing
+Invoke-RestMethod http://127.0.0.1:8003/health
+Invoke-RestMethod http://127.0.0.1:8003/debug/sessions
+Invoke-RestMethod http://127.0.0.1:8003/debug/audio/sessions
+```
+
+After the ESP32 connects and sends audio, decode the latest captured Opus session to WAV:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_audio_capture.ps1
+```
+
+For v0.2 debug text loop testing, run Buddy Core on `8010`, keep the ESP32 connected to Gateway, then run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_text_loop.ps1 -Text "I like apples"
+```
+
+Expected v0.3 limitation: Gateway captures and decodes ESP32 audio for debugging, but the ESP32 will not hear a Buddy reply yet.
 
 ## Test
 

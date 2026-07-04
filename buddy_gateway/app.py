@@ -6,6 +6,10 @@ from json import JSONDecodeError
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.responses import FileResponse, PlainTextResponse
+from buddy_gateway.audio_artifact_writer import AudioArtifactWriter
+from buddy_gateway.audio_frames import TimestampAudioBuffer, parse_audio_frame
+from buddy_gateway.audio_store import AudioArtifactStore
 from buddy_gateway.config import GatewaySettings
 from buddy_gateway.core_client import BuddyCoreClient, BuddyCoreError
 from buddy_gateway.state import GatewayState, epoch_seconds
@@ -25,10 +29,15 @@ def create_http_app(
     settings: GatewaySettings | None = None,
     state: GatewayState | None = None,
     core_client: Any | None = None,
+    audio_store: AudioArtifactStore | None = None,
 ) -> FastAPI:
     settings = settings or GatewaySettings()
     state = state or GatewayState(session_history_limit=settings.session_history_limit)
     core_client = core_client or BuddyCoreClient(base_url=settings.buddy_core_base_url)
+    audio_store = audio_store or AudioArtifactStore(
+        base_dir=settings.audio_artifact_dir,
+        session_limit=settings.audio_session_limit,
+    )
     api = FastAPI(title="Buddy Device Gateway")
 
     @api.get("/health")
@@ -51,6 +60,32 @@ def create_http_app(
             "ota_requests": state.ota_summaries(),
         }
 
+    @api.get("/debug/audio/sessions")
+    async def debug_audio_sessions() -> dict[str, Any]:
+        sessions = audio_store.audio_session_summaries()
+        return {
+            "session_count": len(sessions),
+            "sessions": sessions,
+        }
+
+    @api.post("/debug/sessions/{session_id}/decode-audio")
+    async def decode_audio(session_id: str) -> dict[str, Any]:
+        try:
+            payload = audio_store.decode_session(session_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="audio session not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        payload["audio_url"] = _audio_url(settings, session_id)
+        return payload
+
+    @api.get("/debug/sessions/{session_id}/audio.wav")
+    async def download_audio(session_id: str) -> FileResponse:
+        wav_path = audio_store.wav_path_for_session(session_id)
+        if wav_path is None:
+            raise HTTPException(status_code=404, detail="audio wav not found")
+        return FileResponse(wav_path, media_type="audio/wav", filename=f"{session_id}.wav")
+
     @api.post("/debug/sessions/{session_id}/inject-text")
     async def inject_debug_text(session_id: str, request: Request) -> dict[str, Any]:
         body = await _safe_json(request)
@@ -63,8 +98,11 @@ def create_http_app(
         )
 
     @api.get("/xiaozhi/ota/")
-    async def ota_get() -> dict[str, Any]:
-        return _ota_payload(settings=settings, version="0.0.0")
+    async def ota_get() -> PlainTextResponse:
+        return PlainTextResponse(
+            f"OTA interface is running. WebSocket URL: {settings.websocket_url()}",
+            media_type="text/plain",
+        )
 
     @api.post("/xiaozhi/ota/")
     async def ota_post(request: Request) -> dict[str, Any]:
@@ -72,7 +110,7 @@ def create_http_app(
         headers = _headers_dict(request.headers)
         device_id = _header_value(headers, "device-id")
         client_id = _header_value(headers, "client-id")
-        version = _version_from_body(body)
+        version = _version_from_request(headers=headers, body=body)
         board = body.get("board") if isinstance(body, dict) else None
         state.record_ota(
             device_id=device_id,
@@ -98,10 +136,17 @@ def create_websocket_app(
     settings: GatewaySettings | None = None,
     state: GatewayState | None = None,
     core_client: Any | None = None,
+    audio_store: AudioArtifactStore | None = None,
 ) -> FastAPI:
     settings = settings or GatewaySettings()
     state = state or GatewayState(session_history_limit=settings.session_history_limit)
     core_client = core_client or BuddyCoreClient(base_url=settings.buddy_core_base_url)
+    audio_store = audio_store or AudioArtifactStore(
+        base_dir=settings.audio_artifact_dir,
+        session_limit=settings.audio_session_limit,
+    )
+    audio_writer = AudioArtifactWriter(audio_store)
+    audio_buffers: dict[str, TimestampAudioBuffer] = {}
     api = FastAPI(title="Buddy Device Gateway WebSocket")
 
     @api.websocket("/xiaozhi/v1/")
@@ -117,6 +162,8 @@ def create_websocket_app(
             remote_address=remote_address,
             headers=headers,
         )
+        audio_buffers[session.session_id] = TimestampAudioBuffer(max_size=20)
+        audio_writer.start_session(session.session_id)
         logger.info(
             "WebSocket connected session_id=%s device_id=%s client_id=%s remote=%s",
             session.session_id,
@@ -140,14 +187,42 @@ def create_websocket_app(
                         text=text,
                     )
                 elif payload is not None:
-                    state.record_audio_frame(session.session_id, len(payload))
-                    logger.debug(
-                        "Audio frame session_id=%s bytes=%s",
+                    parsed = parse_audio_frame(payload)
+                    emitted_frames = audio_buffers[session.session_id].push(parsed)
+                    state.record_audio_frame(
                         session.session_id,
+                        raw_byte_count=len(payload),
+                        payload_byte_count=len(parsed.payload),
+                        parse_mode=parsed.mode,
+                        timestamp=parsed.timestamp,
+                    )
+                    for emitted_frame in emitted_frames:
+                        await audio_writer.enqueue_frame(
+                            session_id=session.session_id,
+                            device_id=device_id,
+                            client_id=client_id,
+                            frame=emitted_frame,
+                        )
+                    logger.debug(
+                        "Audio frame session_id=%s mode=%s raw_bytes=%s payload_bytes=%s timestamp=%s",
+                        session.session_id,
+                        parsed.mode,
                         len(payload),
+                        len(parsed.payload),
+                        parsed.timestamp,
                     )
         finally:
+            audio_buffer = audio_buffers.pop(session.session_id, None)
+            if audio_buffer is not None:
+                for buffered_frame in audio_buffer.flush():
+                    await audio_writer.enqueue_frame(
+                        session_id=session.session_id,
+                        device_id=device_id,
+                        client_id=client_id,
+                        frame=buffered_frame,
+                    )
             summary = state.finish_session(session.session_id)
+            await audio_writer.finish_session(session.session_id)
             logger.info("WebSocket disconnected summary=%s", summary)
 
     return api
@@ -219,7 +294,7 @@ def _ota_payload(settings: GatewaySettings, version: str) -> dict[str, Any]:
             "url": settings.websocket_url(),
             "token": "",
         },
-        "message": "Buddy Device Gateway v0.2 is running.",
+        "message": "Buddy Device Gateway is running.",
     }
 
 
@@ -306,7 +381,11 @@ async def _safe_json(request: Request) -> dict[str, Any]:
     return {}
 
 
-def _version_from_body(body: dict[str, Any]) -> str:
+def _version_from_request(*, headers: dict[str, str], body: dict[str, Any]) -> str:
+    for key in ("device-version", "device_version", "firmware-version", "app-version", "application-version"):
+        value = headers.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     for key in ("version", "firmware_version"):
         value = body.get(key)
         if isinstance(value, str) and value.strip():
@@ -317,6 +396,10 @@ def _version_from_body(body: dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return "0.0.0"
+
+
+def _audio_url(settings: GatewaySettings, session_id: str) -> str:
+    return f"http://{settings.advertised_host()}:{settings.http_port}/debug/sessions/{session_id}/audio.wav"
 
 
 def _headers_dict(headers: Any) -> dict[str, str]:

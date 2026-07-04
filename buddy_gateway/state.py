@@ -48,7 +48,10 @@ class SessionRecord:
     message_log: list[dict[str, Any]] = field(default_factory=list)
     audio_frame_count: int = 0
     audio_byte_count: int = 0
+    audio_payload_byte_count: int = 0
+    audio_parse_modes: Counter[str] = field(default_factory=Counter)
     last_audio_at: int | None = None
+    last_audio_timestamp: int | None = None
     last_message_at: int | None = None
     last_listen_state: str | None = None
     debug_turns: list[dict[str, Any]] = field(default_factory=list)
@@ -70,10 +73,20 @@ class SessionRecord:
         )
         self.message_log = self.message_log[-20:]
 
-    def record_audio(self, byte_count: int) -> None:
+    def record_audio(
+        self,
+        *,
+        raw_byte_count: int,
+        payload_byte_count: int,
+        parse_mode: str,
+        timestamp: int | None,
+    ) -> None:
         self.audio_frame_count += 1
-        self.audio_byte_count += byte_count
+        self.audio_byte_count += raw_byte_count
+        self.audio_payload_byte_count += payload_byte_count
+        self.audio_parse_modes[parse_mode] += 1
         self.last_audio_at = epoch_seconds()
+        self.last_audio_timestamp = timestamp
 
     def record_debug_turn(
         self,
@@ -109,7 +122,10 @@ class SessionRecord:
             "message_log": list(self.message_log),
             "audio_frame_count": self.audio_frame_count,
             "audio_byte_count": self.audio_byte_count,
+            "audio_payload_byte_count": self.audio_payload_byte_count,
+            "audio_parse_modes": dict(self.audio_parse_modes),
             "last_audio_at": self.last_audio_at,
+            "last_audio_timestamp": self.last_audio_timestamp,
             "last_message_at": self.last_message_at,
             "last_listen_state": self.last_listen_state,
             "debug_turns": list(self.debug_turns),
@@ -174,11 +190,24 @@ class GatewayState:
             if session:
                 session.record_message(message_type, payload)
 
-    def record_audio_frame(self, session_id: str, byte_count: int) -> None:
+    def record_audio_frame(
+        self,
+        session_id: str,
+        *,
+        raw_byte_count: int,
+        payload_byte_count: int,
+        parse_mode: str,
+        timestamp: int | None,
+    ) -> None:
         with self._lock:
             session = self._sessions.get(session_id)
             if session:
-                session.record_audio(byte_count)
+                session.record_audio(
+                    raw_byte_count=raw_byte_count,
+                    payload_byte_count=payload_byte_count,
+                    parse_mode=parse_mode,
+                    timestamp=timestamp,
+                )
 
     def record_debug_turn(
         self,

@@ -20,6 +20,7 @@ SCRIPTS = [
     "stop_local_demo.ps1",
     "print_local_demo_urls.ps1",
     "smoke_chat.ps1",
+    "smoke_gateway_audio_capture.ps1",
     "smoke_gateway_text_loop.ps1",
     "smoke_two_devices.ps1",
 ]
@@ -605,7 +606,7 @@ def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
                 "& {",
                 "function global:conda { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
                 f". '{script_path}'",
-                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101' -BuddyCoreBaseUrl 'http://127.0.0.1:18010'",
+                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101' -BuddyCoreBaseUrl 'http://127.0.0.1:18010' -AudioArtifactDir 'tmp\\gateway-audio' -AudioSessionLimit 3",
                 "}",
             ]
         )
@@ -630,6 +631,10 @@ def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
         "192.168.0.101",
         "--buddy-core-base-url",
         "http://127.0.0.1:18010",
+        "--audio-artifact-dir",
+        "tmp\\gateway-audio",
+        "--audio-session-limit",
+        "3",
     ]
 
 
@@ -713,6 +718,56 @@ def test_smoke_gateway_text_loop_injects_text_into_latest_session_and_prints_mem
     assert calls[0]["Uri"] == "http://127.0.0.1:8003/debug/sessions"
     assert calls[1]["Uri"] == "http://127.0.0.1:8003/debug/sessions/session-a/inject-text"
     assert json.loads(calls[1]["Body"]) == {"text": "I like apples"}
+
+
+def test_smoke_gateway_audio_capture_decodes_latest_audio_session():
+    script_path = SCRIPTS_DIR / "smoke_gateway_audio_capture.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:Calls = @()",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param(",
+                "    [string]$Uri,",
+                "    [string]$Method = 'Get',",
+                "    $Body,",
+                "    [string]$ContentType,",
+                "    [switch]$UseBasicParsing",
+                "  )",
+                "  $script:Calls += [pscustomobject]@{ Uri = $Uri; Method = $Method; Body = $Body; ContentType = $ContentType }",
+                "  if ($Uri -like '*/debug/audio/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"opus_frame_count\":3}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/sessions/session-a/decode-audio') {",
+                "    return New-MockWebResponse '{\"status\":\"ok\",\"session_id\":\"session-a\",\"opus_frame_count\":3,\"decoded_frame_count\":3,\"decode_error_count\":0,\"wav_path\":\"data/gateway_audio/session-a/audio.wav\",\"audio_url\":\"http://127.0.0.1:8003/debug/sessions/session-a/audio.wav\"}'",
+                "  }",
+                "  throw \"unexpected uri $Uri\"",
+                "}",
+                "Invoke-SmokeGatewayAudioCapture -GatewayBaseUrl 'http://127.0.0.1:8003'",
+                "$script:Calls | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert "Session: session-a" in result.stdout
+    assert "Device: fc:01" in result.stdout
+    assert "Opus frames: 3" in result.stdout
+    assert "Decoded frames: 3" in result.stdout
+    assert "Decode errors: 0" in result.stdout
+    assert "WAV path: data/gateway_audio/session-a/audio.wav" in result.stdout
+    assert "Audio URL: http://127.0.0.1:8003/debug/sessions/session-a/audio.wav" in result.stdout
+    calls = json.loads(result.stdout.splitlines()[-1])
+    assert calls[0]["Uri"] == "http://127.0.0.1:8003/debug/audio/sessions"
+    assert calls[1]["Uri"] == "http://127.0.0.1:8003/debug/sessions/session-a/decode-audio"
 
 
 def test_stop_local_demo_script_stops_unique_listener_processes_only():

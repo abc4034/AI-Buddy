@@ -4,6 +4,8 @@ param(
   [int]$WebSocketPort = 8000,
   [string]$AdvertiseHost = "",
   [string]$BuddyCoreBaseUrl = "http://127.0.0.1:8010",
+  [string]$AudioArtifactDir = "",
+  [int]$AudioSessionLimit = 20,
   [string]$CondaEnv = "xiaozhi-env"
 )
 
@@ -114,6 +116,8 @@ function Invoke-StartBuddyGateway {
     [int]$WebSocketPort = 8000,
     [string]$AdvertiseHost = "",
     [string]$BuddyCoreBaseUrl = "http://127.0.0.1:8010",
+    [string]$AudioArtifactDir = "",
+    [int]$AudioSessionLimit = 20,
     [string]$CondaEnv = "xiaozhi-env"
   )
 
@@ -141,10 +145,20 @@ function Invoke-StartBuddyGateway {
 
   $args += @("--advertise-host", $AdvertiseHost)
   $args += @("--buddy-core-base-url", $BuddyCoreBaseUrl)
+  if (-not [string]::IsNullOrWhiteSpace($AudioArtifactDir)) {
+    $args += @("--audio-artifact-dir", $AudioArtifactDir)
+  }
+  if ($AudioSessionLimit -ne 20) {
+    $args += @("--audio-session-limit", $AudioSessionLimit)
+  }
 
   Write-Host "Starting Buddy Device Gateway HTTP $BindHost`:$HttpPort, WebSocket $BindHost`:$WebSocketPort with conda env $CondaEnv"
   Write-Host "Gateway OTA will advertise ws://$AdvertiseHost`:$WebSocketPort/xiaozhi/v1/"
   Write-Host "Gateway debug text loop will call Buddy Core at $BuddyCoreBaseUrl/v1/chat/completions"
+  if (-not [string]::IsNullOrWhiteSpace($AudioArtifactDir)) {
+    Write-Host "Gateway audio artifacts will be stored under $AudioArtifactDir"
+  }
+  Write-Host "Gateway audio session retention is $AudioSessionLimit"
 
   Push-Location $repoRoot
   try {
@@ -156,5 +170,5 @@ function Invoke-StartBuddyGateway {
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
-  Invoke-StartBuddyGateway -BindHost $BindHost -HttpPort $HttpPort -WebSocketPort $WebSocketPort -AdvertiseHost $AdvertiseHost -BuddyCoreBaseUrl $BuddyCoreBaseUrl -CondaEnv $CondaEnv
+  Invoke-StartBuddyGateway -BindHost $BindHost -HttpPort $HttpPort -WebSocketPort $WebSocketPort -AdvertiseHost $AdvertiseHost -BuddyCoreBaseUrl $BuddyCoreBaseUrl -AudioArtifactDir $AudioArtifactDir -AudioSessionLimit $AudioSessionLimit -CondaEnv $CondaEnv
 }

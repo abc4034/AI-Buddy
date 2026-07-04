@@ -1,4 +1,4 @@
-# Buddy Device Gateway v0.1/v0.2 Runbook
+# Buddy Device Gateway v0.1/v0.2/v0.3 Runbook
 
 This runbook covers the first replacement steps for XiaoZhi Server.
 
@@ -24,6 +24,16 @@ Buddy Device Gateway v0.2 adds a text-level debug loop:
 - WebSocket debug clients can send `{"type":"debug_text","text":"..."}` and receive `debug_text_result`.
 - Real ESP32 clients still do not receive `stt`, `tts`, or audio replies from the Gateway.
 - Gateway keeps only recent debug turns in memory; long-term persistence remains in Buddy Core memory.
+
+Buddy Device Gateway v0.3 adds audio ingress debugging:
+
+- `GET /xiaozhi/ota/` is a XiaoZhi Server style text health check.
+- OTA `POST /xiaozhi/ota/` prefers XiaoZhi version headers before body fields.
+- WebSocket binary audio is stored as Opus debug frames.
+- Plain binary WebSocket payloads are treated as raw Opus frames.
+- XiaoZhi/MQTT-style 16-byte audio headers are accepted only when their length fields match the payload.
+- Captured Opus frames can be decoded to WAV for inspection.
+- Gateway still does not run ASR, call Buddy Core from audio, run TTS, or send audio replies to ESP32.
 
 ## Start Gateway
 
@@ -63,10 +73,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_gatewa
 
 ## HTTP Checks
 
-OTA JSON check:
+OTA health text:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8003/xiaozhi/ota/
+Invoke-WebRequest http://127.0.0.1:8003/xiaozhi/ota/ -UseBasicParsing
 ```
 
 JSON status:
@@ -95,6 +105,24 @@ Recent sessions:
 Invoke-RestMethod http://127.0.0.1:8003/debug/sessions
 ```
 
+Recent audio sessions:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8003/debug/audio/sessions
+```
+
+Decode captured Opus frames for a known session:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8003/debug/sessions/<session-id>/decode-audio
+```
+
+Open or download the decoded WAV after decoding:
+
+```text
+http://127.0.0.1:8003/debug/sessions/<session-id>/audio.wav
+```
+
 Inject debug text into a known session:
 
 ```powershell
@@ -107,6 +135,14 @@ Or use the smoke script, which picks the latest session and prints the Buddy Cor
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_text_loop.ps1 -Text "I like apples"
 ```
+
+For v0.3 audio capture testing, use the audio smoke script after the ESP32 has sent at least one audio frame:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_audio_capture.ps1
+```
+
+The script prints the selected session, frame counts, decode errors, WAV path, and audio URL.
 
 ## Hardware Check
 
@@ -133,14 +169,22 @@ For v0.2 text-loop testing:
 4. Confirm the script prints an assistant reply from Buddy Core.
 5. Open the printed Memory URL and confirm the episode appears under the hardware `device-id`.
 
-Expected limitation: the device should not hear a Buddy reply in v0.1 or v0.2.
+For v0.3 audio capture testing:
+
+1. Keep only Buddy Device Gateway on `8000` and `8003`.
+2. Trigger listen on the ESP32 and speak once.
+3. Confirm `/debug/audio/sessions` shows the hardware `device-id` and a nonzero `opus_frame_count`.
+4. Run `smoke_gateway_audio_capture.ps1`.
+5. Open the printed WAV path or audio URL and confirm it is a valid captured audio file.
+
+Expected limitation: the device should not hear a Buddy reply in v0.1, v0.2, or v0.3.
 
 ## Automated Tests
 
 Gateway tests:
 
 ```powershell
-conda run -n xiaozhi-env python -m pytest tests/test_gateway.py tests/test_gateway_core_client.py -q
+conda run -n xiaozhi-env python -m pytest tests/test_gateway.py tests/test_gateway_audio.py tests/test_gateway_core_client.py -q
 ```
 
 Script tests:
@@ -157,5 +201,6 @@ conda run -n xiaozhi-env python -m pytest -q
 
 ## Next Steps
 
-- v0.3: add Opus decode, ASR, TTS, and binary audio reply handling.
+- v0.4: decide the ASR integration path after v0.3 proves the captured WAV is valid.
+- Later: add TTS and binary audio reply handling after ASR and Buddy Core text turns are stable.
 - Keep ESP32 XiaoZhi firmware compatibility as the default constraint unless the firmware plan changes.
