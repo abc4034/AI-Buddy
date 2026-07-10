@@ -315,6 +315,7 @@ def test_gateway_listen_stop_transcribes_timestamped_frames_in_order(tmp_path: P
             duration_ms=len(opus_frames) * frame_duration_ms,
             sample_rate=sample_rate,
             channels=channels,
+            pcm_bytes=b"cached-pcm",
         )
 
     monkeypatch.setattr("buddy_gateway.app.decode_opus_frames_to_wav", fake_decode)
@@ -337,7 +338,28 @@ def test_gateway_listen_stop_transcribes_timestamped_frames_in_order(tmp_path: P
         websocket.send_json({"type": "listen", "state": "stop"})
 
     assert decoded_inputs == [[b"early", b"late"]]
+    assert asr_provider.calls[0].pcm_bytes == b"cached-pcm"
     assert state.session_summaries()[0]["asr_turns"][0]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_planned_streaming_asr_provider_raises_provider_error_when_opening_stream():
+    provider = build_asr_provider(GatewaySettings(asr_provider="streaming_asr"))
+    artifact = ASRAudioArtifact(
+        session_id="session-a",
+        turn_id="turn-a",
+        device_id=None,
+        client_id=None,
+        opus_frames=[],
+        wav_bytes=b"RIFF0000WAVE",
+        wav_path=None,
+        sample_rate=16000,
+        channels=1,
+        frame_duration_ms=60,
+    )
+
+    with pytest.raises(ASRProviderError, match="ASR provider 'streaming_asr' is planned but not implemented"):
+        await provider.open_stream(artifact)
 
 
 def test_gateway_disconnect_transcribes_unfinished_listen_turn(tmp_path: Path):

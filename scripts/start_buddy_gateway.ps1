@@ -6,6 +6,14 @@ param(
   [string]$BuddyCoreBaseUrl = "http://127.0.0.1:8010",
   [string]$AudioArtifactDir = "",
   [int]$AudioSessionLimit = 20,
+  [string]$VadProvider = "",
+  [double]$VadThreshold = 0.5,
+  [double]$VadThresholdLow = 0.2,
+  [int]$VadMinSilenceMs = 1000,
+  [int]$VadWindowSize = 5,
+  [int]$VadVoiceVotes = 3,
+  [int]$VadPrerollFrames = 10,
+  [int]$VadMinTurnFrames = 16,
   [string]$AsrProvider = "",
   [string]$AsrHttpUrl = "",
   [string]$AsrModel = "",
@@ -149,6 +157,12 @@ function Initialize-GatewayTtsEnvironment {
   }
 }
 
+function Initialize-GatewayVadEnvironment {
+  foreach ($name in @("VAD_PROVIDER", "VAD_THRESHOLD", "VAD_THRESHOLD_LOW", "VAD_MIN_SILENCE_MS", "VAD_WINDOW_SIZE", "VAD_VOICE_VOTES", "VAD_PREROLL_FRAMES", "VAD_MIN_TURN_FRAMES")) {
+    Sync-UserEnvironmentVariable -Name $name
+  }
+}
+
 function Invoke-StartBuddyGateway {
   param(
     [string]$BindHost = "0.0.0.0",
@@ -158,6 +172,14 @@ function Invoke-StartBuddyGateway {
     [string]$BuddyCoreBaseUrl = "http://127.0.0.1:8010",
     [string]$AudioArtifactDir = "",
     [int]$AudioSessionLimit = 20,
+    [string]$VadProvider = "",
+    [double]$VadThreshold = 0.5,
+    [double]$VadThresholdLow = 0.2,
+    [int]$VadMinSilenceMs = 1000,
+    [int]$VadWindowSize = 5,
+    [int]$VadVoiceVotes = 3,
+    [int]$VadPrerollFrames = 10,
+    [int]$VadMinTurnFrames = 16,
     [string]$AsrProvider = "",
     [string]$AsrHttpUrl = "",
     [string]$AsrModel = "",
@@ -178,6 +200,7 @@ function Invoke-StartBuddyGateway {
   $repoRoot = Get-RepoRoot
   Initialize-GatewayAsrEnvironment
   Initialize-GatewayTtsEnvironment
+  Initialize-GatewayVadEnvironment
   if ([string]::IsNullOrWhiteSpace($AdvertiseHost)) {
     $AdvertiseHost = Get-DefaultAdvertiseHost
     Write-Host "Auto-detected gateway advertise host $AdvertiseHost"
@@ -206,6 +229,30 @@ function Invoke-StartBuddyGateway {
   }
   if ($AudioSessionLimit -ne 20) {
     $args += @("--audio-session-limit", $AudioSessionLimit)
+  }
+  if (-not [string]::IsNullOrWhiteSpace($VadProvider)) {
+    $args += @("--vad-provider", $VadProvider)
+  }
+  if ($VadThreshold -ne 0.5) {
+    $args += @("--vad-threshold", $VadThreshold)
+  }
+  if ($VadThresholdLow -ne 0.2) {
+    $args += @("--vad-threshold-low", $VadThresholdLow)
+  }
+  if ($VadMinSilenceMs -ne 1000) {
+    $args += @("--vad-min-silence-ms", $VadMinSilenceMs)
+  }
+  if ($VadWindowSize -ne 5) {
+    $args += @("--vad-window-size", $VadWindowSize)
+  }
+  if ($VadVoiceVotes -ne 3) {
+    $args += @("--vad-voice-votes", $VadVoiceVotes)
+  }
+  if ($VadPrerollFrames -ne 10) {
+    $args += @("--vad-preroll-frames", $VadPrerollFrames)
+  }
+  if ($VadMinTurnFrames -ne 16) {
+    $args += @("--vad-min-turn-frames", $VadMinTurnFrames)
   }
   if (-not [string]::IsNullOrWhiteSpace($AsrProvider)) {
     $args += @("--asr-provider", $AsrProvider)
@@ -295,5 +342,5 @@ function Invoke-StartBuddyGateway {
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
-  Invoke-StartBuddyGateway -BindHost $BindHost -HttpPort $HttpPort -WebSocketPort $WebSocketPort -AdvertiseHost $AdvertiseHost -BuddyCoreBaseUrl $BuddyCoreBaseUrl -AudioArtifactDir $AudioArtifactDir -AudioSessionLimit $AudioSessionLimit -AsrProvider $AsrProvider -AsrHttpUrl $AsrHttpUrl -AsrModel $AsrModel -AsrApiKey $AsrApiKey -AsrTimeoutSeconds $AsrTimeoutSeconds -TtsProvider $TtsProvider -TtsHttpUrl $TtsHttpUrl -TtsModel $TtsModel -TtsApiKey $TtsApiKey -TtsVoice $TtsVoice -TtsLanguage $TtsLanguage -TtsTimeoutSeconds $TtsTimeoutSeconds -TtsFrameDelayMs $TtsFrameDelayMs -SendSttToDevice:$SendSttToDevice -CondaEnv $CondaEnv
+  Invoke-StartBuddyGateway -BindHost $BindHost -HttpPort $HttpPort -WebSocketPort $WebSocketPort -AdvertiseHost $AdvertiseHost -BuddyCoreBaseUrl $BuddyCoreBaseUrl -AudioArtifactDir $AudioArtifactDir -AudioSessionLimit $AudioSessionLimit -VadProvider $VadProvider -VadThreshold $VadThreshold -VadThresholdLow $VadThresholdLow -VadMinSilenceMs $VadMinSilenceMs -VadWindowSize $VadWindowSize -VadVoiceVotes $VadVoiceVotes -VadPrerollFrames $VadPrerollFrames -VadMinTurnFrames $VadMinTurnFrames -AsrProvider $AsrProvider -AsrHttpUrl $AsrHttpUrl -AsrModel $AsrModel -AsrApiKey $AsrApiKey -AsrTimeoutSeconds $AsrTimeoutSeconds -TtsProvider $TtsProvider -TtsHttpUrl $TtsHttpUrl -TtsModel $TtsModel -TtsApiKey $TtsApiKey -TtsVoice $TtsVoice -TtsLanguage $TtsLanguage -TtsTimeoutSeconds $TtsTimeoutSeconds -TtsFrameDelayMs $TtsFrameDelayMs -SendSttToDevice:$SendSttToDevice -CondaEnv $CondaEnv
 }

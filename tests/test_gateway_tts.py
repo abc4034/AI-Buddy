@@ -271,6 +271,14 @@ async def test_each_planned_tts_provider_has_a_provider_specific_error(provider_
         await provider.synthesize("hello")
 
 
+@pytest.mark.asyncio
+async def test_planned_streaming_tts_provider_raises_provider_error_when_opening_stream():
+    provider = build_tts_provider(GatewaySettings(tts_provider="streaming_tts"))
+
+    with pytest.raises(TTSProviderError, match="TTS provider 'streaming_tts' is planned but not implemented"):
+        await provider.open_stream("session-a")
+
+
 def test_streaming_tts_contract_exposes_normalized_pcm_chunks_and_methods():
     chunk = TTSPcmChunk(pcm16_mono=b"\x00\x00", sample_rate=16000, is_final=True)
 

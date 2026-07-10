@@ -16,6 +16,7 @@ class DecodedWav:
     duration_ms: int
     sample_rate: int
     channels: int
+    pcm_bytes: bytes = b""
 
 
 def decode_opus_frames_to_wav(
@@ -57,6 +58,7 @@ def decode_opus_frames_to_wav(
         duration_ms=len(pcm_frames) * frame_duration_ms,
         sample_rate=sample_rate,
         channels=channels,
+        pcm_bytes=pcm_bytes,
     )
 
 

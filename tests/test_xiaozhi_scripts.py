@@ -683,6 +683,61 @@ def test_start_buddy_gateway_script_uses_xiaozhi_compatible_ports_by_default():
     assert 'CondaEnv = "xiaozhi-env"' in text
 
 
+def test_start_buddy_gateway_script_hydrates_all_vad_user_environment_variable_names():
+    script_path = SCRIPTS_DIR / "start_buddy_gateway.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:HydratedNames = @()",
+                "function Sync-UserEnvironmentVariable { param([string]$Name) $script:HydratedNames += $Name }",
+                "Initialize-GatewayVadEnvironment",
+                "$script:HydratedNames | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert json.loads(result.stdout) == [
+        "VAD_PROVIDER",
+        "VAD_THRESHOLD",
+        "VAD_THRESHOLD_LOW",
+        "VAD_MIN_SILENCE_MS",
+        "VAD_WINDOW_SIZE",
+        "VAD_VOICE_VOTES",
+        "VAD_PREROLL_FRAMES",
+        "VAD_MIN_TURN_FRAMES",
+    ]
+
+
+def test_start_buddy_gateway_script_forwards_non_default_vad_overrides():
+    script_path = SCRIPTS_DIR / "start_buddy_gateway.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:conda { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                f". '{script_path}'",
+                "Invoke-StartBuddyGateway -AdvertiseHost '192.168.0.101' -VadProvider 'silero' -VadThreshold 0.65 -VadThresholdLow 0.15 -VadMinSilenceMs 750 -VadWindowSize 7 -VadVoiceVotes 4 -VadPrerollFrames 12 -VadMinTurnFrames 20",
+                "}",
+            ]
+        )
+    )
+    args = [str(arg) for arg in json.loads(result.stdout.splitlines()[-1])]
+
+    assert args[args.index("--vad-provider") + 1] == "silero"
+    assert args[args.index("--vad-threshold") + 1] == "0.65"
+    assert args[args.index("--vad-threshold-low") + 1] == "0.15"
+    assert args[args.index("--vad-min-silence-ms") + 1] == "750"
+    assert args[args.index("--vad-window-size") + 1] == "7"
+    assert args[args.index("--vad-voice-votes") + 1] == "4"
+    assert args[args.index("--vad-preroll-frames") + 1] == "12"
+    assert args[args.index("--vad-min-turn-frames") + 1] == "20"
+
+
 def test_start_buddy_gateway_script_auto_detects_physical_lan_advertise_host():
     script_path = SCRIPTS_DIR / "start_buddy_gateway.ps1"
 

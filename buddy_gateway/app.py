@@ -587,6 +587,7 @@ async def _process_active_asr_turn(
             sample_rate=decoded.sample_rate,
             channels=decoded.channels,
             frame_duration_ms=60,
+            pcm_bytes=decoded.pcm_bytes,
         )
         return await _run_asr_artifact(
             state=state,

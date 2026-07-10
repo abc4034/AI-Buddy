@@ -83,6 +83,11 @@ class TTSProviderNotImplemented:
         raise TTSProviderError(f"TTS provider '{self.provider_name}' is planned but not implemented")
 
 
+class StreamingTTSProviderNotImplemented(TTSProviderNotImplemented):
+    async def open_stream(self, session_id: str) -> TTSStream:
+        raise TTSProviderError(f"TTS provider '{self.provider_name}' is planned but not implemented")
+
+
 class DashScopeQwenHttpTTSProvider:
     provider_name = "dashscope_qwen_http"
 
@@ -185,6 +190,8 @@ def build_tts_provider(settings: Any, *, transport: httpx.AsyncBaseTransport | N
             timeout=float(getattr(settings, "tts_timeout_seconds", 60.0)),
             transport=transport,
         )
+    if provider_name == "streaming_tts":
+        return StreamingTTSProviderNotImplemented(provider_name)
     if provider_name in PLANNED_TTS_PROVIDERS:
         return TTSProviderNotImplemented(provider_name)
     raise TTSProviderError(f"Unknown TTS provider '{provider_name}'")

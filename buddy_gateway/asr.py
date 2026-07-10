@@ -81,6 +81,11 @@ class ASRProviderNotImplemented:
         raise ASRProviderError(f"ASR provider '{self.provider_name}' is planned but not implemented")
 
 
+class StreamingASRProviderNotImplemented(ASRProviderNotImplemented):
+    async def open_stream(self, artifact: ASRAudioArtifact) -> ASRStream:
+        raise ASRProviderError(f"ASR provider '{self.provider_name}' is planned but not implemented")
+
+
 class HttpFileASRProvider:
     provider_name = "http_file"
 
@@ -214,6 +219,8 @@ def build_asr_provider(settings: Any, *, transport: httpx.AsyncBaseTransport | N
             timeout=float(getattr(settings, "asr_timeout_seconds", 60.0)),
             transport=transport,
         )
+    if provider_name == "streaming_asr":
+        return StreamingASRProviderNotImplemented(provider_name)
     if provider_name in PLANNED_ASR_PROVIDERS:
         return ASRProviderNotImplemented(provider_name)
     raise ASRProviderError(f"Unknown ASR provider '{provider_name}'")
