@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Any, Protocol
+from typing import Any, AsyncIterator, Protocol
 
 import httpx
 
@@ -30,10 +30,41 @@ class TTSResult:
     raw_response: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class TTSPcmChunk:
+    pcm16_mono: bytes
+    sample_rate: int
+    is_final: bool
+
+
 class TTSProvider(Protocol):
     provider_name: str
 
     async def synthesize(self, text: str) -> TTSResult:
+        ...
+
+
+class TTSStream(Protocol):
+    async def push_text(self, text: str) -> None:
+        ...
+
+    async def finish(self) -> None:
+        ...
+
+    async def abort(self) -> None:
+        ...
+
+    async def close(self) -> None:
+        ...
+
+    def __aiter__(self) -> AsyncIterator[TTSPcmChunk]:
+        ...
+
+
+class StreamingTTSProvider(Protocol):
+    provider_name: str
+
+    async def open_stream(self, session_id: str) -> TTSStream:
         ...
 
 

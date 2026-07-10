@@ -28,6 +28,7 @@ class ASRAudioArtifact:
     sample_rate: int
     channels: int
     frame_duration_ms: int
+    pcm_bytes: bytes = b""
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,27 @@ class ASRProvider(Protocol):
     provider_name: str
 
     async def transcribe(self, artifact: ASRAudioArtifact) -> ASRResult:
+        ...
+
+
+class ASRStream(Protocol):
+    async def push_pcm(self, pcm_frame: bytes) -> None:
+        ...
+
+    async def finish(self) -> ASRResult:
+        ...
+
+    async def abort(self) -> None:
+        ...
+
+    async def close(self) -> None:
+        ...
+
+
+class StreamingASRProvider(Protocol):
+    provider_name: str
+
+    async def open_stream(self, artifact: ASRAudioArtifact) -> ASRStream:
         ...
 
 

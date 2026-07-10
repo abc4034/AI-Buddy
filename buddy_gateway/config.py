@@ -21,6 +21,14 @@ class GatewaySettings:
     session_history_limit: int = 50
     audio_artifact_dir: str = "data/gateway_audio"
     audio_session_limit: int = 20
+    vad_provider: str = "silero"
+    vad_threshold: float = 0.5
+    vad_threshold_low: float = 0.2
+    vad_min_silence_ms: int = 1000
+    vad_window_size: int = 5
+    vad_voice_votes: int = 3
+    vad_preroll_frames: int = 10
+    vad_min_turn_frames: int = 16
     asr_provider: str = "disabled"
     asr_http_url: str = field(default_factory=lambda: os.environ.get("ASR_HTTP_URL", ""))
     asr_model: str = field(default_factory=lambda: os.environ.get("ASR_MODEL", DEFAULT_ASR_MODEL))

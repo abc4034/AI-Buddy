@@ -1,5 +1,6 @@
 import json
 import base64
+import inspect
 from pathlib import Path
 
 import httpx
@@ -10,9 +11,13 @@ from fastapi.testclient import TestClient
 from buddy_gateway.app import create_http_app, create_websocket_app
 from buddy_gateway.asr import (
     ASRAudioArtifact,
+    ASRProviderError,
     ASRProviderNotImplemented,
+    ASRStream,
     HttpFileASRProvider,
     QwenChatAudioASRProvider,
+    StreamingASRProvider,
+    asr_provider_catalog,
     build_asr_provider,
 )
 from buddy_gateway.audio_frames import xiaozhi_header_packet
@@ -153,6 +158,64 @@ def test_asr_provider_factory_exposes_planned_not_implemented_providers():
 
     assert isinstance(provider, ASRProviderNotImplemented)
     assert provider.provider_name == "local_model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["local_model", "asr_server", "streaming_asr"])
+async def test_each_planned_asr_provider_has_a_provider_specific_error(provider_name):
+    provider = build_asr_provider(GatewaySettings(asr_provider=provider_name))
+    artifact = ASRAudioArtifact(
+        session_id="session-a",
+        turn_id="turn-a",
+        device_id=None,
+        client_id=None,
+        opus_frames=[],
+        wav_bytes=b"RIFF0000WAVE",
+        wav_path=None,
+        sample_rate=16000,
+        channels=1,
+        frame_duration_ms=60,
+        pcm_bytes=b"\x00\x00",
+    )
+
+    with pytest.raises(
+        ASRProviderError,
+        match=rf"ASR provider '{provider_name}' is planned but not implemented",
+    ):
+        await provider.transcribe(artifact)
+
+
+def test_asr_catalog_preserves_batch_providers_and_planned_slots():
+    catalog = asr_provider_catalog(GatewaySettings(asr_provider="qwen_chat_audio"))
+
+    assert catalog["implemented"] == ["disabled", "http_file", "qwen_chat_audio"]
+    assert catalog["planned"] == ["local_model", "asr_server", "streaming_asr"]
+
+
+def test_asr_audio_artifact_carries_predecoded_pcm_bytes():
+    artifact = ASRAudioArtifact(
+        session_id="session-a",
+        turn_id="turn-a",
+        device_id=None,
+        client_id=None,
+        opus_frames=[b"opus"],
+        wav_bytes=b"RIFF0000WAVE",
+        wav_path=None,
+        sample_rate=16000,
+        channels=1,
+        frame_duration_ms=60,
+        pcm_bytes=b"cached-pcm",
+    )
+
+    assert artifact.pcm_bytes == b"cached-pcm"
+
+
+def test_streaming_asr_protocols_expose_the_binding_methods():
+    assert list(inspect.signature(ASRStream.push_pcm).parameters) == ["self", "pcm_frame"]
+    assert list(inspect.signature(ASRStream.finish).parameters) == ["self"]
+    assert list(inspect.signature(ASRStream.abort).parameters) == ["self"]
+    assert list(inspect.signature(ASRStream.close).parameters) == ["self"]
+    assert list(inspect.signature(StreamingASRProvider.open_stream).parameters) == ["self", "artifact"]
 
 
 def test_gateway_settings_default_asr_provider_is_disabled_even_when_user_env_is_set(monkeypatch):

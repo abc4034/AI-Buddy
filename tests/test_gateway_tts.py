@@ -1,8 +1,10 @@
 import base64
+import inspect
 import io
 import json
 import wave
 from pathlib import Path
+from typing import AsyncIterator
 
 import httpx
 import opuslib_next
@@ -17,9 +19,12 @@ from buddy_gateway.opus_codec import encode_pcm16_mono_to_opus_frames, wav_bytes
 from buddy_gateway.state import GatewayState
 from buddy_gateway.tts import (
     DashScopeQwenHttpTTSProvider,
+    StreamingTTSProvider,
+    TTSPcmChunk,
     TTSProviderError,
     TTSProviderNotImplemented,
     TTSResult,
+    TTSStream,
     build_tts_provider,
     tts_provider_catalog,
 )
@@ -64,6 +69,94 @@ class FakeTTSProvider:
     async def synthesize(self, text: str) -> TTSResult:
         self.calls.append(text)
         return TTSResult(audio_bytes=self.audio, audio_format="wav", provider=self.provider_name)
+
+
+class FakeTTSStream:
+    def __init__(self, chunks: list[TTSPcmChunk]) -> None:
+        self.chunks = chunks
+        self.pushed_text: list[str] = []
+        self.finished = False
+
+    async def push_text(self, text: str) -> None:
+        self.pushed_text.append(text)
+
+    async def finish(self) -> None:
+        self.finished = True
+
+    async def abort(self) -> None:
+        pass
+
+    async def close(self) -> None:
+        pass
+
+    def __aiter__(self) -> AsyncIterator[TTSPcmChunk]:
+        return self._chunks()
+
+    async def _chunks(self) -> AsyncIterator[TTSPcmChunk]:
+        for chunk in self.chunks:
+            yield chunk
+
+
+class FakeStreamingTTSProvider:
+    provider_name = "fake_streaming_tts"
+
+    def __init__(self, stream: FakeTTSStream) -> None:
+        self.stream = stream
+        self.session_ids: list[str] = []
+
+    async def open_stream(self, session_id: str) -> FakeTTSStream:
+        self.session_ids.append(session_id)
+        return self.stream
+
+
+class RecordingDeviceAudioSender:
+    def __init__(self) -> None:
+        self.plays = []
+
+    async def play(
+        self,
+        turn_id: str,
+        generation: int,
+        text: str,
+        opus_frames: AsyncIterator[bytes],
+    ) -> None:
+        self.plays.append(
+            {
+                "turn_id": turn_id,
+                "generation": generation,
+                "text": text,
+                "opus_frames": [frame async for frame in opus_frames],
+            }
+        )
+
+
+async def stream_tts_through_shared_adapter(
+    provider: StreamingTTSProvider,
+    sender: RecordingDeviceAudioSender,
+    *,
+    session_id: str,
+    turn_id: str,
+    text: str,
+) -> TTSStream:
+    stream = await provider.open_stream(session_id)
+    await stream.push_text(text)
+    await stream.finish()
+    encoded_frames: list[bytes] = []
+    async for chunk in stream:
+        encoded_frames.extend(
+            encode_pcm16_mono_to_opus_frames(
+                chunk.pcm16_mono,
+                sample_rate=chunk.sample_rate,
+                frame_duration_ms=60,
+            )
+        )
+
+    async def frames() -> AsyncIterator[bytes]:
+        for frame in encoded_frames:
+            yield frame
+
+    await sender.play(turn_id, 1, text, frames())
+    return stream
 
 
 @pytest.mark.asyncio
@@ -164,6 +257,62 @@ def test_tts_provider_factory_exposes_planned_not_implemented_providers():
 
     assert isinstance(provider, TTSProviderNotImplemented)
     assert provider.provider_name == "local_model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["local_model", "tts_server", "streaming_tts"])
+async def test_each_planned_tts_provider_has_a_provider_specific_error(provider_name):
+    provider = build_tts_provider(GatewaySettings(tts_provider=provider_name))
+
+    with pytest.raises(
+        TTSProviderError,
+        match=rf"TTS provider '{provider_name}' is planned but not implemented",
+    ):
+        await provider.synthesize("hello")
+
+
+def test_streaming_tts_contract_exposes_normalized_pcm_chunks_and_methods():
+    chunk = TTSPcmChunk(pcm16_mono=b"\x00\x00", sample_rate=16000, is_final=True)
+
+    assert chunk.pcm16_mono == b"\x00\x00"
+    assert chunk.sample_rate == 16000
+    assert chunk.is_final is True
+    assert list(inspect.signature(TTSStream.push_text).parameters) == ["self", "text"]
+    assert list(inspect.signature(TTSStream.finish).parameters) == ["self"]
+    assert list(inspect.signature(TTSStream.abort).parameters) == ["self"]
+    assert list(inspect.signature(TTSStream.close).parameters) == ["self"]
+    assert list(inspect.signature(TTSStream.__aiter__).parameters) == ["self"]
+    assert list(inspect.signature(StreamingTTSProvider.open_stream).parameters) == ["self", "session_id"]
+
+
+@pytest.mark.asyncio
+async def test_fake_streaming_tts_connects_through_shared_opus_adapter_to_device_sender_seam():
+    pcm_frame = b"\x00\x00" * 960
+    stream = FakeTTSStream(
+        [
+            TTSPcmChunk(pcm16_mono=pcm_frame, sample_rate=16000, is_final=False),
+            TTSPcmChunk(pcm16_mono=pcm_frame, sample_rate=16000, is_final=True),
+        ]
+    )
+    provider = FakeStreamingTTSProvider(stream)
+    sender = RecordingDeviceAudioSender()
+
+    connected_stream = await stream_tts_through_shared_adapter(
+        provider,
+        sender,
+        session_id="session-a",
+        turn_id="turn-a",
+        text="Hello Buddy",
+    )
+
+    assert connected_stream is stream
+    assert provider.session_ids == ["session-a"]
+    assert stream.pushed_text == ["Hello Buddy"]
+    assert stream.finished is True
+    assert sender.plays[0]["turn_id"] == "turn-a"
+    assert sender.plays[0]["generation"] == 1
+    assert sender.plays[0]["text"] == "Hello Buddy"
+    assert len(sender.plays[0]["opus_frames"]) == 2
 
 
 def test_tts_provider_catalog_hides_api_key_and_lists_provider_slots():

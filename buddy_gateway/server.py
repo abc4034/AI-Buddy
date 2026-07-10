@@ -78,6 +78,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-history-limit", type=int, default=50, help="Recent session history size.")
     parser.add_argument("--audio-artifact-dir", default="data/gateway_audio", help="Directory for captured Opus/WAV debug artifacts.")
     parser.add_argument("--audio-session-limit", type=int, default=20, help="Recent audio artifact session limit.")
+    parser.add_argument("--vad-provider", default=os.environ.get("VAD_PROVIDER", "silero"), help="VAD provider: silero.")
+    parser.add_argument("--vad-threshold", type=float, default=float(os.environ.get("VAD_THRESHOLD", "0.5")), help="VAD speech probability threshold.")
+    parser.add_argument("--vad-threshold-low", type=float, default=float(os.environ.get("VAD_THRESHOLD_LOW", "0.2")), help="VAD low speech probability threshold.")
+    parser.add_argument("--vad-min-silence-ms", type=int, default=int(os.environ.get("VAD_MIN_SILENCE_MS", "1000")), help="Silence required to end a speech turn.")
+    parser.add_argument("--vad-window-size", type=int, default=int(os.environ.get("VAD_WINDOW_SIZE", "5")), help="VAD voting window size in frames.")
+    parser.add_argument("--vad-voice-votes", type=int, default=int(os.environ.get("VAD_VOICE_VOTES", "3")), help="Voice votes required within the VAD window.")
+    parser.add_argument("--vad-preroll-frames", type=int, default=int(os.environ.get("VAD_PREROLL_FRAMES", "10")), help="Audio frames retained before speech detection.")
+    parser.add_argument("--vad-min-turn-frames", type=int, default=int(os.environ.get("VAD_MIN_TURN_FRAMES", "16")), help="Minimum audio frames in an automatic turn.")
     parser.add_argument(
         "--asr-provider",
         default=os.environ.get("ASR_PROVIDER", "disabled"),
@@ -115,6 +123,14 @@ def main() -> None:
         session_history_limit=args.session_history_limit,
         audio_artifact_dir=args.audio_artifact_dir,
         audio_session_limit=args.audio_session_limit,
+        vad_provider=args.vad_provider,
+        vad_threshold=args.vad_threshold,
+        vad_threshold_low=args.vad_threshold_low,
+        vad_min_silence_ms=args.vad_min_silence_ms,
+        vad_window_size=args.vad_window_size,
+        vad_voice_votes=args.vad_voice_votes,
+        vad_preroll_frames=args.vad_preroll_frames,
+        vad_min_turn_frames=args.vad_min_turn_frames,
         asr_provider=args.asr_provider,
         asr_http_url=args.asr_http_url,
         asr_model=args.asr_model or GatewaySettings().asr_model,
