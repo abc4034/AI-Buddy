@@ -59,7 +59,7 @@ function Get-LatestTurn {
   return $turns[$turns.Count - 1]
 }
 
-function Select-GatewayVoiceSession {
+function Select-GatewayVoiceLoop {
   param(
     [object]$DebugPayload,
     [string]$SessionId = ""
@@ -75,19 +75,54 @@ function Select-GatewayVoiceSession {
     if (-not $match) {
       throw "Gateway session '$SessionId' was not found."
     }
-    return $match
+    $sessions = @($match)
   }
 
   for ($i = $sessions.Count - 1; $i -ge 0; $i--) {
     $session = $sessions[$i]
-    $asrTurn = Get-LatestTurn -Session $session -PropertyName "asr_turns"
-    $ttsTurn = Get-LatestTurn -Session $session -PropertyName "tts_turns"
-    if ($asrTurn -and $ttsTurn) {
-      return $session
+    $asrTurns = @($session.asr_turns)
+    $ttsTurns = @($session.tts_turns)
+    $latestAsrTurn = Get-LatestTurn -Session $session -PropertyName "asr_turns"
+    if ($latestAsrTurn -and $latestAsrTurn.status -eq "ok") {
+      $matchingLatestTtsTurn = $ttsTurns |
+        Where-Object {
+          $_.status -eq "ok" -and
+          [int]$_.audio_frame_count -gt 0 -and
+          [string]$_.asr_turn_id -eq [string]$latestAsrTurn.turn_id
+        } |
+        Select-Object -Last 1
+      if (-not $matchingLatestTtsTurn) {
+        $latestTtsTurn = Get-LatestTurn -Session $session -PropertyName "tts_turns"
+        $message = "Gateway ASR turn '$($latestAsrTurn.turn_id)' has no matching successful TTS turn."
+        if ($latestTtsTurn -and -not [string]::IsNullOrWhiteSpace([string]$latestTtsTurn.error)) {
+          $message = "$message`: $($latestTtsTurn.error)"
+        }
+        elseif ($latestTtsTurn -and -not [string]::IsNullOrWhiteSpace([string]$latestTtsTurn.asr_turn_id)) {
+          $message = "$message Latest TTS targets ASR turn '$($latestTtsTurn.asr_turn_id)'."
+        }
+        throw $message
+      }
+    }
+
+    for ($j = $ttsTurns.Count - 1; $j -ge 0; $j--) {
+      $ttsTurn = $ttsTurns[$j]
+      if ($ttsTurn.status -ne "ok" -or [int]$ttsTurn.audio_frame_count -le 0) {
+        continue
+      }
+      $asrTurn = $asrTurns |
+        Where-Object { $_.status -eq "ok" -and [string]$_.turn_id -eq [string]$ttsTurn.asr_turn_id } |
+        Select-Object -First 1
+      if ($asrTurn) {
+        return [pscustomobject]@{
+          Session = $session
+          AsrTurn = $asrTurn
+          TtsTurn = $ttsTurn
+        }
+      }
     }
   }
 
-  throw "No Gateway session has both ASR and TTS turns. Speak to ESP32 once and wait for playback."
+  throw "No Gateway session has a successful matched ASR and TTS turn. Speak to ESP32 once and wait for playback."
 }
 
 function Assert-GatewayVoiceLoop {
@@ -146,9 +181,10 @@ function Invoke-SmokeGatewayVoiceLoop {
   )
 
   $debugPayload = Get-GatewayDebugSessions -GatewayBaseUrl $GatewayBaseUrl
-  $session = Select-GatewayVoiceSession -DebugPayload $debugPayload -SessionId $SessionId
-  $asrTurn = Get-LatestTurn -Session $session -PropertyName "asr_turns"
-  $ttsTurn = Get-LatestTurn -Session $session -PropertyName "tts_turns"
+  $voiceLoop = Select-GatewayVoiceLoop -DebugPayload $debugPayload -SessionId $SessionId
+  $session = $voiceLoop.Session
+  $asrTurn = $voiceLoop.AsrTurn
+  $ttsTurn = $voiceLoop.TtsTurn
   Assert-GatewayVoiceLoop -AsrTurn $asrTurn -TtsTurn $ttsTurn
 
   $encodedDeviceId = [uri]::EscapeDataString([string]$session.device_id)
