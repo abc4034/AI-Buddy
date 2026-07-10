@@ -16,6 +16,14 @@ def _new_session_id() -> str:
     return f"gateway-{uuid.uuid4().hex}"
 
 
+def new_asr_turn_id() -> str:
+    return f"asr-{uuid.uuid4().hex}"
+
+
+def new_tts_turn_id() -> str:
+    return f"tts-{uuid.uuid4().hex}"
+
+
 @dataclass
 class OtaRecord:
     device_id: str | None
@@ -55,6 +63,8 @@ class SessionRecord:
     last_message_at: int | None = None
     last_listen_state: str | None = None
     debug_turns: list[dict[str, Any]] = field(default_factory=list)
+    asr_turns: list[dict[str, Any]] = field(default_factory=list)
+    tts_turns: list[dict[str, Any]] = field(default_factory=list)
 
     def record_message(self, message_type: str, payload: dict[str, Any] | None = None) -> None:
         now = epoch_seconds()
@@ -107,6 +117,59 @@ class SessionRecord:
         self.debug_turns = self.debug_turns[-20:]
         return turn
 
+    def start_asr_turn(self, *, trigger: str, turn_id: str | None = None) -> dict[str, Any]:
+        turn = {
+            "turn_id": turn_id or new_asr_turn_id(),
+            "trigger": trigger,
+            "status": "recording",
+            "started_at": epoch_seconds(),
+            "completed_at": None,
+            "transcript": None,
+            "assistant_text": None,
+            "asr_provider": None,
+            "error": None,
+            "sent_stt_to_device": False,
+            "audio_frame_count": 0,
+        }
+        self.asr_turns.append(turn)
+        self.asr_turns = self.asr_turns[-20:]
+        return turn
+
+    def update_asr_turn(self, turn_id: str, **updates: Any) -> dict[str, Any] | None:
+        for turn in self.asr_turns:
+            if turn.get("turn_id") == turn_id:
+                turn.update(updates)
+                if updates.get("status") not in {None, "recording"}:
+                    turn["completed_at"] = epoch_seconds()
+                return dict(turn)
+        return None
+
+    def start_tts_turn(self, *, asr_turn_id: str | None, text: str, turn_id: str | None = None) -> dict[str, Any]:
+        turn = {
+            "turn_id": turn_id or new_tts_turn_id(),
+            "asr_turn_id": asr_turn_id,
+            "status": "synthesizing",
+            "started_at": epoch_seconds(),
+            "completed_at": None,
+            "text": text,
+            "provider": None,
+            "audio_format": None,
+            "audio_frame_count": 0,
+            "error": None,
+        }
+        self.tts_turns.append(turn)
+        self.tts_turns = self.tts_turns[-20:]
+        return turn
+
+    def update_tts_turn(self, turn_id: str, **updates: Any) -> dict[str, Any] | None:
+        for turn in self.tts_turns:
+            if turn.get("turn_id") == turn_id:
+                turn.update(updates)
+                if updates.get("status") not in {None, "synthesizing", "sending"}:
+                    turn["completed_at"] = epoch_seconds()
+                return dict(turn)
+        return None
+
     def disconnect(self) -> None:
         self.disconnected_at = epoch_seconds()
 
@@ -129,6 +192,8 @@ class SessionRecord:
             "last_message_at": self.last_message_at,
             "last_listen_state": self.last_listen_state,
             "debug_turns": list(self.debug_turns),
+            "asr_turns": list(self.asr_turns),
+            "tts_turns": list(self.tts_turns),
         }
 
 
@@ -228,6 +293,34 @@ class GatewayState:
                 assistant_text=assistant_text,
                 error=error,
             )
+
+    def start_asr_turn(self, session_id: str, *, trigger: str) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            return session.start_asr_turn(trigger=trigger)
+
+    def update_asr_turn(self, session_id: str, turn_id: str, **updates: Any) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            return session.update_asr_turn(turn_id, **updates)
+
+    def start_tts_turn(self, session_id: str, *, asr_turn_id: str | None, text: str) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            return session.start_tts_turn(asr_turn_id=asr_turn_id, text=text)
+
+    def update_tts_turn(self, session_id: str, turn_id: str, **updates: Any) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            return session.update_tts_turn(turn_id, **updates)
 
     def finish_session(self, session_id: str) -> dict[str, Any] | None:
         with self._lock:

@@ -12,29 +12,30 @@ Local Buddy Core service for an ESP32-S3 XiaoZhi-compatible English companion ed
 - Uses `metadata.device_id` to separate child profiles and memory.
 - Reads the first persona from config with `PERSONA=cheerful` by default.
 - Keeps local model deployment available by changing environment variables.
-- Does not require speaker output on the current hardware.
-- Keeps the existing XiaoZhi Server bridge path for the first complete hardware voice loop.
-- Adds Buddy Device Gateway as the replacement track for XiaoZhi Server. Gateway v0.3 can handle OTA, WebSocket, protocol messages, Opus audio capture, and WAV decoding for debugging.
+- Keeps the existing XiaoZhi Server bridge path available for comparison and fallback.
+- Adds Buddy Device Gateway as the replacement track for XiaoZhi Server. Gateway v0.5 can handle OTA, WebSocket, protocol messages, Opus audio capture, WAV decoding, ASR, Buddy Core memory/profile calls, TTS synthesis, and Opus audio replies to ESP32.
 
 ## Current Replacement Status
 
 The project currently has two runnable hardware paths:
 
-- XiaoZhi Server bridge: ESP32 still talks to XiaoZhi Server, while XiaoZhi Server forwards LLM calls into Buddy Core. This is the current full voice-loop demo path.
-- Buddy Device Gateway: ESP32 talks directly to our new Gateway on the same XiaoZhi-compatible ports, `8003` for OTA and `8000` for WebSocket. v0.3 validates protocol ingress and captured audio, but still does not run ASR/TTS or send audio replies back to the ESP32.
+- XiaoZhi Server bridge: ESP32 still talks to XiaoZhi Server, while XiaoZhi Server forwards LLM calls into Buddy Core. This remains available as the compatibility fallback.
+- Buddy Device Gateway: ESP32 talks directly to our new Gateway on the same XiaoZhi-compatible ports, `8003` for OTA and `8000` for WebSocket. v0.5 implements the Gateway ASR-to-TTS reply path; its explicit `listen stop` path works in tests, while the real ESP32 `auto` mode currently reaches ASR only during disconnect, after the socket has closed and cannot receive TTS.
 
 Gateway milestones now in the repo:
 
 - v0.1: OTA and `/xiaozhi/v1/` WebSocket skeleton, hardware `device-id/client-id`, `hello/listen`, and binary audio frame counters.
 - v0.2: debug text loop from Gateway to Buddy Core `/v1/chat/completions`, carrying `device_id`, `client_id`, `session_id`, and `source: buddy_gateway_debug`.
 - v0.3: XiaoZhi-style OTA compatibility tweaks, raw Opus and strict 16-byte audio header handling, per-session audio artifacts under `data/gateway_audio`, and debug WAV decoding.
+- v0.4: XiaoZhi-inspired ASR provider architecture, implemented `qwen_chat_audio` and generic `http_file` ASR API providers, planned local/ASR-server/streaming provider slots, and transcript-to-Buddy-Core text loop.
+- v0.5: XiaoZhi-style first full voice loop, implemented DashScope Qwen HTTP TTS provider, planned local/TTS-server/streaming TTS slots, 16k/mono/60ms Opus reply encoding, `tts` state messages, and minimal `abort` playback stop.
 
 ## Docs
 
 For the current demo phase, prefer the Windows PowerShell + conda `xiaozhi-env` path.
 
 - Windows local demo runbook: [docs/runbooks/windows-local-demo.md](docs/runbooks/windows-local-demo.md)
-- Buddy Device Gateway v0.1/v0.2/v0.3: [docs/runbooks/buddy-device-gateway-v0.1.md](docs/runbooks/buddy-device-gateway-v0.1.md)
+- Buddy Device Gateway v0.1-v0.5: [docs/runbooks/buddy-device-gateway-v0.1.md](docs/runbooks/buddy-device-gateway-v0.1.md)
 - Buddy Core configuration: [docs/buddy-core-configuration.md](docs/buddy-core-configuration.md)
 - Buddy Core vs old Buddy Brain naming: [docs/buddy-core-and-buddy-brain.md](docs/buddy-core-and-buddy-brain.md)
 - Memory dashboard: [docs/runbooks/memory-dashboard.md](docs/runbooks/memory-dashboard.md)
@@ -109,6 +110,34 @@ Start Gateway with the computer LAN IP that the ESP32 can reach:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_gateway.ps1 -AdvertiseHost <host-lan-ip>
 ```
 
+For v0.5 voice-loop testing with Alibaba Bailian Qwen3-ASR and Qwen-TTS, configure ASR and TTS through local environment variables:
+
+```powershell
+[Environment]::SetEnvironmentVariable("ASR_PROVIDER", "qwen_chat_audio", "User")
+[Environment]::SetEnvironmentVariable("ASR_HTTP_URL", "https://<asr-host>/compatible-mode/v1", "User")
+[Environment]::SetEnvironmentVariable("ASR_MODEL", "qwen3-asr-flash-2025-09-08", "User")
+[Environment]::SetEnvironmentVariable("ASR_API_KEY", "<your-asr-api-key>", "User")
+[Environment]::SetEnvironmentVariable("TTS_PROVIDER", "dashscope_qwen_http", "User")
+[Environment]::SetEnvironmentVariable("TTS_HTTP_URL", "https://<tts-host>/api/v1", "User")
+[Environment]::SetEnvironmentVariable("TTS_MODEL", "qwen3-tts-instruct-flash", "User")
+[Environment]::SetEnvironmentVariable("TTS_API_KEY", "<your-tts-api-key>", "User")
+[Environment]::SetEnvironmentVariable("TTS_VOICE", "Cherry", "User")
+[Environment]::SetEnvironmentVariable("TTS_LANGUAGE", "auto", "User")
+```
+
+`qwen3-asr-flash-2025-09-08` is the dated model alias configured for this Bailian workspace and verified in the local smoke test. Public Bailian examples may show `qwen3-asr-flash`; keep the workspace alias if your API call succeeds.
+
+`qwen3-tts-instruct-flash` is the first v0.5 TTS model. v0.5 intentionally does not use `qwen3-tts-vd-2026-01-26`, because Voice Design requires creating and selecting a `voice_id` first.
+
+Use `ASR_PROVIDER=http_file` only for providers that expose an OpenAI-style `/audio/transcriptions` multipart endpoint.
+
+Then start Buddy Core and Gateway:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_core.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_gateway.ps1 -AdvertiseHost <host-lan-ip>
+```
+
 Set the ESP32 OTA URL to:
 
 ```text
@@ -122,6 +151,8 @@ Invoke-WebRequest http://127.0.0.1:8003/xiaozhi/ota/ -UseBasicParsing
 Invoke-RestMethod http://127.0.0.1:8003/health
 Invoke-RestMethod http://127.0.0.1:8003/debug/sessions
 Invoke-RestMethod http://127.0.0.1:8003/debug/audio/sessions
+Invoke-RestMethod http://127.0.0.1:8003/debug/asr/providers
+Invoke-RestMethod http://127.0.0.1:8003/debug/tts/providers
 ```
 
 After the ESP32 connects and sends audio, decode the latest captured Opus session to WAV:
@@ -136,7 +167,21 @@ For v0.2 debug text loop testing, run Buddy Core on `8010`, keep the ESP32 conne
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_text_loop.ps1 -Text "I like apples"
 ```
 
-Expected v0.3 limitation: Gateway captures and decodes ESP32 audio for debugging, but the ESP32 will not hear a Buddy reply yet.
+For v0.4 ASR text-loop testing, run after the ESP32 has sent audio:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_asr_text_loop.ps1
+```
+
+The ASR smoke script selects a session that is present in both `/debug/sessions` and `/debug/audio/sessions`, so stale audio artifacts from before a Gateway restart are not treated as valid live sessions. It exits with an error unless ASR and Buddy Core both return an `ok` text loop result.
+
+For v0.5 voice-loop diagnostics, use the following after an explicit `listen stop` test turn has completed:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_voice_loop.ps1
+```
+
+The voice-loop smoke script checks the latest session for `asr_turns.status: ok`, `tts_turns.status: ok`, and nonzero outgoing Opus frame count. Current observed limitation: real ESP32 `auto` mode reaches ASR only during disconnect, so the WebSocket is closed before Gateway can return TTS audio; a real auto-mode hardware voice loop is not yet available.
 
 ## Test
 

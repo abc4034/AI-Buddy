@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from buddy_gateway.asr import DEFAULT_ASR_MODEL
+from buddy_gateway.tts import DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE
 
 
 WEBSOCKET_PATH = "/xiaozhi/v1/"
@@ -17,6 +21,20 @@ class GatewaySettings:
     session_history_limit: int = 50
     audio_artifact_dir: str = "data/gateway_audio"
     audio_session_limit: int = 20
+    asr_provider: str = "disabled"
+    asr_http_url: str = field(default_factory=lambda: os.environ.get("ASR_HTTP_URL", ""))
+    asr_model: str = field(default_factory=lambda: os.environ.get("ASR_MODEL", DEFAULT_ASR_MODEL))
+    asr_api_key: str = field(default_factory=lambda: os.environ.get("ASR_API_KEY", ""))
+    asr_timeout_seconds: float = 60.0
+    send_stt_to_device: bool = False
+    tts_provider: str = "disabled"
+    tts_http_url: str = field(default_factory=lambda: os.environ.get("TTS_HTTP_URL", ""))
+    tts_model: str = field(default_factory=lambda: os.environ.get("TTS_MODEL", DEFAULT_TTS_MODEL))
+    tts_api_key: str = field(default_factory=lambda: os.environ.get("TTS_API_KEY", ""))
+    tts_voice: str = field(default_factory=lambda: os.environ.get("TTS_VOICE", DEFAULT_TTS_VOICE))
+    tts_language: str = field(default_factory=lambda: os.environ.get("TTS_LANGUAGE", "auto"))
+    tts_timeout_seconds: float = 60.0
+    tts_frame_delay_ms: int = 60
 
     def advertised_host(self) -> str:
         if self.advertise_host:

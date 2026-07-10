@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import audioop
 import wave
 from dataclasses import dataclass
 from io import BytesIO
@@ -57,3 +58,50 @@ def decode_opus_frames_to_wav(
         sample_rate=sample_rate,
         channels=channels,
     )
+
+
+def wav_bytes_to_pcm16_mono(wav_bytes: bytes, *, target_sample_rate: int = 16000) -> bytes:
+    with wave.open(BytesIO(wav_bytes), "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        source_sample_rate = wav_file.getframerate()
+        pcm = wav_file.readframes(wav_file.getnframes())
+
+    if sample_width != 2:
+        pcm = audioop.lin2lin(pcm, sample_width, 2)
+        sample_width = 2
+    if channels > 1:
+        pcm = audioop.tomono(pcm, sample_width, 1.0 / channels, 1.0 / channels)
+    if source_sample_rate != target_sample_rate:
+        pcm, _ = audioop.ratecv(
+            pcm,
+            sample_width,
+            1,
+            source_sample_rate,
+            target_sample_rate,
+            None,
+        )
+    return pcm
+
+
+def encode_pcm16_mono_to_opus_frames(
+    pcm: bytes,
+    *,
+    sample_rate: int = 16000,
+    frame_duration_ms: int = 60,
+) -> list[bytes]:
+    frame_size = int(sample_rate * frame_duration_ms / 1000)
+    frame_byte_count = frame_size * 2
+    encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
+    frames: list[bytes] = []
+    try:
+        for offset in range(0, len(pcm), frame_byte_count):
+            chunk = pcm[offset : offset + frame_byte_count]
+            if not chunk:
+                continue
+            if len(chunk) < frame_byte_count:
+                chunk += b"\x00" * (frame_byte_count - len(chunk))
+            frames.append(encoder.encode(chunk, frame_size))
+    finally:
+        del encoder
+    return frames

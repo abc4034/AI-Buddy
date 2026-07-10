@@ -3,13 +3,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 
 import uvicorn
 
 from buddy_gateway.app import create_http_app, create_websocket_app
+from buddy_gateway.asr import build_asr_provider
 from buddy_gateway.config import GatewaySettings
 from buddy_gateway.core_client import BuddyCoreClient
 from buddy_gateway.state import GatewayState
+from buddy_gateway.tts import DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE, build_tts_provider
 
 
 logger = logging.getLogger(__name__)
@@ -18,9 +21,17 @@ logger = logging.getLogger(__name__)
 async def serve(settings: GatewaySettings) -> None:
     state = GatewayState(session_history_limit=settings.session_history_limit)
     core_client = BuddyCoreClient(base_url=settings.buddy_core_base_url)
+    asr_provider = build_asr_provider(settings)
+    tts_provider = build_tts_provider(settings)
     http_server = uvicorn.Server(
         uvicorn.Config(
-            create_http_app(settings=settings, state=state, core_client=core_client),
+            create_http_app(
+                settings=settings,
+                state=state,
+                core_client=core_client,
+                asr_provider=asr_provider,
+                tts_provider=tts_provider,
+            ),
             host=settings.host,
             port=settings.http_port,
             log_level="info",
@@ -28,7 +39,13 @@ async def serve(settings: GatewaySettings) -> None:
     )
     websocket_server = uvicorn.Server(
         uvicorn.Config(
-            create_websocket_app(settings=settings, state=state, core_client=core_client),
+            create_websocket_app(
+                settings=settings,
+                state=state,
+                core_client=core_client,
+                asr_provider=asr_provider,
+                tts_provider=tts_provider,
+            ),
             host=settings.host,
             port=settings.websocket_port,
             log_level="info",
@@ -38,11 +55,13 @@ async def serve(settings: GatewaySettings) -> None:
     logger.info("Buddy Device Gateway HTTP OTA: http://%s:%s/xiaozhi/ota/", settings.host, settings.http_port)
     logger.info("Buddy Device Gateway WebSocket: %s", settings.websocket_url())
     logger.info("Buddy Core base URL: %s", settings.buddy_core_base_url)
+    logger.info("Gateway ASR provider: %s", settings.asr_provider)
+    logger.info("Gateway TTS provider: %s", settings.tts_provider)
     await asyncio.gather(http_server.serve(), websocket_server.serve())
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Buddy Device Gateway v0.3")
+    parser = argparse.ArgumentParser(description="Run Buddy Device Gateway v0.5")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host for HTTP and WebSocket servers.")
     parser.add_argument("--http-port", type=int, default=8003, help="HTTP OTA port.")
     parser.add_argument("--websocket-port", type=int, default=8000, help="WebSocket port.")
@@ -59,6 +78,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-history-limit", type=int, default=50, help="Recent session history size.")
     parser.add_argument("--audio-artifact-dir", default="data/gateway_audio", help="Directory for captured Opus/WAV debug artifacts.")
     parser.add_argument("--audio-session-limit", type=int, default=20, help="Recent audio artifact session limit.")
+    parser.add_argument(
+        "--asr-provider",
+        default=os.environ.get("ASR_PROVIDER", "disabled"),
+        help="ASR provider: disabled, http_file, qwen_chat_audio, local_model, asr_server, or streaming_asr.",
+    )
+    parser.add_argument("--asr-http-url", default=os.environ.get("ASR_HTTP_URL", ""), help="HTTP ASR base URL or endpoint.")
+    parser.add_argument("--asr-model", default=os.environ.get("ASR_MODEL", None), help="ASR model name.")
+    parser.add_argument("--asr-api-key", default=os.environ.get("ASR_API_KEY", ""), help="ASR API key. Prefer ASR_API_KEY environment variable.")
+    parser.add_argument("--asr-timeout-seconds", type=float, default=float(os.environ.get("ASR_TIMEOUT_SECONDS", "60")), help="ASR HTTP request timeout.")
+    parser.add_argument("--send-stt-to-device", action="store_true", help="Send recognized text back to ESP32 as a stt message.")
+    parser.add_argument(
+        "--tts-provider",
+        default=os.environ.get("TTS_PROVIDER", "disabled"),
+        help="TTS provider: disabled, dashscope_qwen_http, local_model, tts_server, or streaming_tts.",
+    )
+    parser.add_argument("--tts-http-url", default=os.environ.get("TTS_HTTP_URL", ""), help="DashScope TTS /api/v1 base URL or generation endpoint.")
+    parser.add_argument("--tts-model", default=os.environ.get("TTS_MODEL", None), help="TTS model name.")
+    parser.add_argument("--tts-api-key", default=os.environ.get("TTS_API_KEY", ""), help="TTS API key. Prefer TTS_API_KEY environment variable.")
+    parser.add_argument("--tts-voice", default=os.environ.get("TTS_VOICE", None), help="TTS voice name or custom voice ID.")
+    parser.add_argument("--tts-language", default=os.environ.get("TTS_LANGUAGE", None), help="TTS language_type or auto.")
+    parser.add_argument("--tts-timeout-seconds", type=float, default=float(os.environ.get("TTS_TIMEOUT_SECONDS", "60")), help="TTS HTTP request timeout.")
+    parser.add_argument("--tts-frame-delay-ms", type=int, default=int(os.environ.get("TTS_FRAME_DELAY_MS", "60")), help="Delay between outgoing Opus frames.")
     return parser
 
 
@@ -74,6 +115,20 @@ def main() -> None:
         session_history_limit=args.session_history_limit,
         audio_artifact_dir=args.audio_artifact_dir,
         audio_session_limit=args.audio_session_limit,
+        asr_provider=args.asr_provider,
+        asr_http_url=args.asr_http_url,
+        asr_model=args.asr_model or GatewaySettings().asr_model,
+        asr_api_key=args.asr_api_key,
+        asr_timeout_seconds=args.asr_timeout_seconds,
+        send_stt_to_device=args.send_stt_to_device,
+        tts_provider=args.tts_provider,
+        tts_http_url=args.tts_http_url,
+        tts_model=args.tts_model or DEFAULT_TTS_MODEL,
+        tts_api_key=args.tts_api_key,
+        tts_voice=args.tts_voice or DEFAULT_TTS_VOICE,
+        tts_language=args.tts_language or "auto",
+        tts_timeout_seconds=args.tts_timeout_seconds,
+        tts_frame_delay_ms=args.tts_frame_delay_ms,
     )
     asyncio.run(serve(settings))
 

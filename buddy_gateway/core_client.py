@@ -29,16 +29,36 @@ class BuddyCoreClient:
         session_id: str,
         text: str,
     ) -> str:
-        metadata: dict[str, Any] = {
+        return await self.complete_text(
+            device_id=device_id,
+            client_id=client_id,
+            session_id=session_id,
+            text=text,
+            source="buddy_gateway_debug",
+        )
+
+    async def complete_text(
+        self,
+        *,
+        device_id: str | None,
+        client_id: str | None,
+        session_id: str,
+        text: str,
+        source: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        extra_metadata = metadata or {}
+        request_metadata: dict[str, Any] = {
             "device_id": device_id,
             "client_id": client_id,
             "session_id": session_id,
-            "source": "buddy_gateway_debug",
+            "source": source,
         }
+        request_metadata.update(extra_metadata)
         payload = {
             "stream": False,
             "messages": [{"role": "user", "content": text}],
-            "metadata": metadata,
+            "metadata": request_metadata,
         }
         try:
             async with httpx.AsyncClient(

@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import uuid
@@ -21,6 +22,8 @@ SCRIPTS = [
     "print_local_demo_urls.ps1",
     "smoke_chat.ps1",
     "smoke_gateway_audio_capture.ps1",
+    "smoke_gateway_asr_text_loop.ps1",
+    "smoke_gateway_voice_loop.ps1",
     "smoke_gateway_text_loop.ps1",
     "smoke_two_devices.ps1",
 ]
@@ -32,15 +35,23 @@ def run_powershell(command: str, *, cwd: Path | None = None, check: bool = True)
         "$OutputEncoding = [System.Text.UTF8Encoding]::new(); "
         + command
     )
-    return subprocess.run(
+    env = os.environ.copy()
+    env.pop("PYTEST_CURRENT_TEST", None)
+    result = subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_command],
         cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
-        check=check,
+        env=env,
     )
+    if check and result.returncode != 0:
+        raise AssertionError(
+            "PowerShell command failed with exit code "
+            f"{result.returncode}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    return result
 
 
 def combined_output(result: subprocess.CompletedProcess[str]) -> str:
@@ -606,7 +617,7 @@ def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
                 "& {",
                 "function global:conda { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
                 f". '{script_path}'",
-                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101' -BuddyCoreBaseUrl 'http://127.0.0.1:18010' -AudioArtifactDir 'tmp\\gateway-audio' -AudioSessionLimit 3",
+                "Invoke-StartBuddyGateway -BindHost '127.0.0.1' -HttpPort 18003 -WebSocketPort 18000 -AdvertiseHost '192.168.0.101' -BuddyCoreBaseUrl 'http://127.0.0.1:18010' -AudioArtifactDir 'tmp\\gateway-audio' -AudioSessionLimit 3 -AsrProvider 'http_file' -AsrHttpUrl 'https://asr.example.test/compatible-mode/v1' -AsrModel 'qwen3-asr-flash-2025-09-08' -AsrTimeoutSeconds 45 -TtsProvider 'dashscope_qwen_http' -TtsHttpUrl 'https://tts.example.test/api/v1' -TtsModel 'qwen3-tts-instruct-flash' -TtsVoice 'Cherry' -TtsLanguage 'English' -TtsTimeoutSeconds 30 -TtsFrameDelayMs 5 -SendSttToDevice",
                 "}",
             ]
         )
@@ -635,6 +646,29 @@ def test_start_buddy_gateway_script_invokes_gateway_server_with_overrides():
         "tmp\\gateway-audio",
         "--audio-session-limit",
         "3",
+        "--asr-provider",
+        "http_file",
+        "--asr-http-url",
+        "https://asr.example.test/compatible-mode/v1",
+        "--asr-model",
+        "qwen3-asr-flash-2025-09-08",
+        "--asr-timeout-seconds",
+        "45",
+        "--tts-provider",
+        "dashscope_qwen_http",
+        "--tts-http-url",
+        "https://tts.example.test/api/v1",
+        "--tts-model",
+        "qwen3-tts-instruct-flash",
+        "--tts-voice",
+        "Cherry",
+        "--tts-language",
+        "English",
+        "--tts-timeout-seconds",
+        "30",
+        "--tts-frame-delay-ms",
+        "5",
+        "--send-stt-to-device",
     ]
 
 
@@ -644,6 +678,8 @@ def test_start_buddy_gateway_script_uses_xiaozhi_compatible_ports_by_default():
     assert "[int]$HttpPort = 8003" in text
     assert "[int]$WebSocketPort = 8000" in text
     assert '[string]$BuddyCoreBaseUrl = "http://127.0.0.1:8010"' in text
+    assert '[string]$TtsModel = ""' in text
+    assert '[string]$TtsVoice = ""' in text
     assert 'CondaEnv = "xiaozhi-env"' in text
 
 
@@ -768,6 +804,222 @@ def test_smoke_gateway_audio_capture_decodes_latest_audio_session():
     calls = json.loads(result.stdout.splitlines()[-1])
     assert calls[0]["Uri"] == "http://127.0.0.1:8003/debug/audio/sessions"
     assert calls[1]["Uri"] == "http://127.0.0.1:8003/debug/sessions/session-a/decode-audio"
+
+
+def test_smoke_gateway_asr_text_loop_transcribes_latest_session_and_prints_memory_url():
+    script_path = SCRIPTS_DIR / "smoke_gateway_asr_text_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:Calls = @()",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param(",
+                "    [string]$Uri,",
+                "    [string]$Method = 'Get',",
+                "    $Body,",
+                "    [string]$ContentType,",
+                "    [switch]$UseBasicParsing",
+                "  )",
+                "  $script:Calls += [pscustomobject]@{ Uri = $Uri; Method = $Method; Body = $Body; ContentType = $ContentType }",
+                "  if ($Uri -like '*/debug/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"audio_frame_count\":3}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/audio/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"opus_frame_count\":3}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/sessions/session-a/transcribe-audio') {",
+                "    return New-MockWebResponse '{\"status\":\"ok\",\"turn_id\":\"asr-a\",\"transcript\":\"I like apples\",\"assistant_text\":\"Apple means ping guo.\",\"asr_provider\":\"http_file\"}'",
+                "  }",
+                "  throw \"unexpected uri $Uri\"",
+                "}",
+                "Invoke-SmokeGatewayAsrTextLoop -GatewayBaseUrl 'http://127.0.0.1:8003' -MemoryBaseUrl 'http://127.0.0.1:8010/memory'",
+                "$script:Calls | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert "Session: session-a" in result.stdout
+    assert "Transcript: I like apples" in result.stdout
+    assert "Assistant: Apple means ping guo." in result.stdout
+    assert "Memory URL: http://127.0.0.1:8010/memory?device_id=fc%3A01" in result.stdout
+    calls = json.loads(result.stdout.splitlines()[-1])
+    assert calls[0]["Uri"] == "http://127.0.0.1:8003/debug/sessions"
+    assert calls[1]["Uri"] == "http://127.0.0.1:8003/debug/audio/sessions"
+    assert calls[2]["Uri"] == "http://127.0.0.1:8003/debug/sessions/session-a/transcribe-audio"
+
+
+def test_smoke_gateway_asr_text_loop_fails_when_transcription_status_is_not_ok():
+    script_path = SCRIPTS_DIR / "smoke_gateway_asr_text_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param(",
+                "    [string]$Uri,",
+                "    [string]$Method = 'Get',",
+                "    $Body,",
+                "    [string]$ContentType,",
+                "    [switch]$UseBasicParsing",
+                "  )",
+                "  if ($Uri -like '*/debug/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"audio_frame_count\":3}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/audio/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"opus_frame_count\":3}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/sessions/session-a/transcribe-audio') {",
+                "    return New-MockWebResponse '{\"status\":\"buddy_core_error\",\"error\":\"Buddy Core unavailable\",\"asr_provider\":\"qwen_chat_audio\"}'",
+                "  }",
+                "  throw \"unexpected uri $Uri\"",
+                "}",
+                "Invoke-SmokeGatewayAsrTextLoop -GatewayBaseUrl 'http://127.0.0.1:8003'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "buddy_core_error" in combined_output(result)
+    assert "Buddy Core unavailable" in combined_output(result)
+
+
+def test_smoke_gateway_asr_text_loop_uses_latest_live_session_not_stale_audio_artifact():
+    script_path = SCRIPTS_DIR / "smoke_gateway_asr_text_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:Calls = @()",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param(",
+                "    [string]$Uri,",
+                "    [string]$Method = 'Get',",
+                "    $Body,",
+                "    [string]$ContentType,",
+                "    [switch]$UseBasicParsing",
+                "  )",
+                "  $script:Calls += [pscustomobject]@{ Uri = $Uri; Method = $Method; Body = $Body; ContentType = $ContentType }",
+                "  if ($Uri -like '*/debug/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-live\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"audio_frame_count\":8}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/audio/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":2,\"sessions\":[{\"session_id\":\"session-stale\",\"device_id\":\"old-device\",\"client_id\":\"old-client\",\"opus_frame_count\":3},{\"session_id\":\"session-live\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"opus_frame_count\":8}]}'",
+                "  }",
+                "  if ($Uri -like '*/debug/sessions/session-live/transcribe-audio') {",
+                "    return New-MockWebResponse '{\"status\":\"ok\",\"turn_id\":\"asr-a\",\"transcript\":\"hello\",\"assistant_text\":\"hi\",\"asr_provider\":\"qwen_chat_audio\"}'",
+                "  }",
+                "  throw \"unexpected uri $Uri\"",
+                "}",
+                "Invoke-SmokeGatewayAsrTextLoop -GatewayBaseUrl 'http://127.0.0.1:8003'",
+                "$script:Calls | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    calls = json.loads(result.stdout.splitlines()[-1])
+    assert calls[0]["Uri"] == "http://127.0.0.1:8003/debug/sessions"
+    assert calls[1]["Uri"] == "http://127.0.0.1:8003/debug/audio/sessions"
+    assert calls[2]["Uri"] == "http://127.0.0.1:8003/debug/sessions/session-live/transcribe-audio"
+
+
+def test_smoke_gateway_voice_loop_reports_latest_completed_tts_turn():
+    script_path = SCRIPTS_DIR / "smoke_gateway_voice_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:Calls = @()",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param(",
+                "    [string]$Uri,",
+                "    [string]$Method = 'Get',",
+                "    $Body,",
+                "    [string]$ContentType,",
+                "    [switch]$UseBasicParsing",
+                "  )",
+                "  $script:Calls += [pscustomobject]@{ Uri = $Uri; Method = $Method; Body = $Body; ContentType = $ContentType }",
+                "  if ($Uri -like '*/debug/sessions' -and $Method -eq 'Get') {",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"asr_turns\":[{\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"status\":\"ok\",\"provider\":\"dashscope_qwen_http\",\"text\":\"hi\",\"audio_frame_count\":4}]}]}'",
+                "  }",
+                "  throw \"unexpected uri $Uri\"",
+                "}",
+                "Invoke-SmokeGatewayVoiceLoop -GatewayBaseUrl 'http://127.0.0.1:8003' -MemoryBaseUrl 'http://127.0.0.1:8010/memory'",
+                "$script:Calls | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+
+    assert "Session: session-a" in result.stdout
+    assert "Device: fc:01" in result.stdout
+    assert "Transcript: hello" in result.stdout
+    assert "Assistant: hi" in result.stdout
+    assert "TTS provider: dashscope_qwen_http" in result.stdout
+    assert "TTS frames sent: 4" in result.stdout
+    assert "Memory URL: http://127.0.0.1:8010/memory?device_id=fc%3A01" in result.stdout
+    calls = json.loads(result.stdout.splitlines()[-1])
+    assert calls["Uri"] == "http://127.0.0.1:8003/debug/sessions"
+
+
+def test_smoke_gateway_voice_loop_fails_when_tts_turn_is_not_ok():
+    script_path = SCRIPTS_DIR / "smoke_gateway_voice_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param([string]$Uri, [string]$Method = 'Get', [switch]$UseBasicParsing)",
+                "  return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"asr_turns\":[{\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"status\":\"error\",\"provider\":\"dashscope_qwen_http\",\"error\":\"TTS HTTP 401\"}]}]}'",
+                "}",
+                "Invoke-SmokeGatewayVoiceLoop -GatewayBaseUrl 'http://127.0.0.1:8003'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "TTS HTTP 401" in combined_output(result)
 
 
 def test_stop_local_demo_script_stops_unique_listener_processes_only():
