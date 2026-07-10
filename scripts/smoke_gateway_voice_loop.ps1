@@ -112,6 +112,9 @@ function Assert-GatewayVoiceLoop {
   if ([string]::IsNullOrWhiteSpace([string]$AsrTurn.assistant_text)) {
     throw "Gateway ASR turn has an empty Buddy Core response."
   }
+  if ([string]::IsNullOrWhiteSpace([string]$AsrTurn.turn_id)) {
+    throw "Gateway ASR turn has no turn_id; cannot pair the TTS turn."
+  }
 
   if (-not $TtsTurn) {
     throw "Selected Gateway session has no TTS turn."
@@ -122,6 +125,12 @@ function Assert-GatewayVoiceLoop {
       $message = "$message`: $($TtsTurn.error)"
     }
     throw $message
+  }
+  if ([string]::IsNullOrWhiteSpace([string]$TtsTurn.asr_turn_id)) {
+    throw "Gateway TTS turn has no asr_turn_id; cannot verify it matches ASR turn '$($AsrTurn.turn_id)'."
+  }
+  if ([string]$TtsTurn.asr_turn_id -ne [string]$AsrTurn.turn_id) {
+    throw "Gateway TTS turn asr_turn_id '$($TtsTurn.asr_turn_id)' does not match ASR turn_id '$($AsrTurn.turn_id)'."
   }
   if ([int]$TtsTurn.audio_frame_count -le 0) {
     throw "Gateway TTS turn did not send any Opus frames."

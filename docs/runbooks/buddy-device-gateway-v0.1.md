@@ -228,7 +228,7 @@ For v0.5 voice-loop diagnostics, use the voice smoke script after an explicit `l
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_gateway_voice_loop.ps1
 ```
 
-The script checks the latest session for successful ASR and TTS turns, prints transcript, assistant reply, TTS provider, outgoing Opus frame count, and Memory URL.
+The script checks that the latest ASR and TTS turns are successful and share the same ASR turn ID, then prints transcript, assistant reply, TTS provider, outgoing Opus frame count, and Memory URL.
 
 For v0.3 audio capture testing, use the audio smoke script after the ESP32 has sent at least one audio frame:
 
@@ -292,7 +292,7 @@ For v0.5 voice-loop diagnostics:
 6. Run `smoke_gateway_voice_loop.ps1`.
 7. Open the printed Memory URL and confirm the transcript appears under the hardware `device-id`.
 
-Expected limitation: the device should not hear a Buddy audio reply in v0.1, v0.2, v0.3, or v0.4. v0.5 proves speaker playback through the explicit `listen stop` test path, but observed real ESP32 `auto` mode reaches ASR only during disconnect. Because that WebSocket is already closed, Gateway cannot return TTS on the same socket, so a real auto-mode hardware voice loop is not yet available.
+Expected limitation: the device should not hear a Buddy audio reply in v0.1, v0.2, v0.3, or v0.4. In v0.5, automated explicit `listen stop` coverage proves that TTS control messages and Opus frames are sent over an open socket; physical ESP32 speaker playback remains unverified. Observed real ESP32 `auto` mode still finalizes ASR only at disconnect. Because that WebSocket is already closed, Gateway cannot return TTS on the same socket, so a real auto-mode hardware voice loop is not yet available.
 
 ## Automated Tests
 

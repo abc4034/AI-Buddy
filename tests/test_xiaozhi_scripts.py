@@ -972,7 +972,7 @@ def test_smoke_gateway_voice_loop_reports_latest_completed_tts_turn():
                 "  )",
                 "  $script:Calls += [pscustomobject]@{ Uri = $Uri; Method = $Method; Body = $Body; ContentType = $ContentType }",
                 "  if ($Uri -like '*/debug/sessions' -and $Method -eq 'Get') {",
-                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"asr_turns\":[{\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"status\":\"ok\",\"provider\":\"dashscope_qwen_http\",\"text\":\"hi\",\"audio_frame_count\":4}]}]}'",
+                "    return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"client_id\":\"client-a\",\"asr_turns\":[{\"turn_id\":\"asr-a\",\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"asr_turn_id\":\"asr-a\",\"status\":\"ok\",\"provider\":\"dashscope_qwen_http\",\"text\":\"hi\",\"audio_frame_count\":4}]}]}'",
                 "  }",
                 "  throw \"unexpected uri $Uri\"",
                 "}",
@@ -1009,7 +1009,7 @@ def test_smoke_gateway_voice_loop_fails_when_tts_turn_is_not_ok():
                 "}",
                 "function Invoke-WebRequest {",
                 "  param([string]$Uri, [string]$Method = 'Get', [switch]$UseBasicParsing)",
-                "  return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"asr_turns\":[{\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"status\":\"error\",\"provider\":\"dashscope_qwen_http\",\"error\":\"TTS HTTP 401\"}]}]}'",
+                "  return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"asr_turns\":[{\"turn_id\":\"asr-a\",\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"status\":\"error\",\"provider\":\"dashscope_qwen_http\",\"error\":\"TTS HTTP 401\"}]}]}'",
                 "}",
                 "Invoke-SmokeGatewayVoiceLoop -GatewayBaseUrl 'http://127.0.0.1:8003'",
                 "}",
@@ -1020,6 +1020,35 @@ def test_smoke_gateway_voice_loop_fails_when_tts_turn_is_not_ok():
 
     assert result.returncode != 0
     assert "TTS HTTP 401" in combined_output(result)
+
+
+def test_smoke_gateway_voice_loop_fails_when_tts_turn_targets_an_older_asr_turn():
+    script_path = SCRIPTS_DIR / "smoke_gateway_voice_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param([string]$Uri, [string]$Method = 'Get', [switch]$UseBasicParsing)",
+                "  return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"asr_turns\":[{\"turn_id\":\"asr-old\",\"status\":\"ok\",\"transcript\":\"old\",\"assistant_text\":\"old reply\"},{\"turn_id\":\"asr-new\",\"status\":\"ok\",\"transcript\":\"hello\",\"assistant_text\":\"hi\"}],\"tts_turns\":[{\"asr_turn_id\":\"asr-old\",\"status\":\"ok\",\"provider\":\"dashscope_qwen_http\",\"audio_frame_count\":4}]}]}'",
+                "}",
+                "Invoke-SmokeGatewayVoiceLoop -GatewayBaseUrl 'http://127.0.0.1:8003'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "asr-new" in combined_output(result)
+    assert "asr-old" in combined_output(result)
 
 
 def test_stop_local_demo_script_stops_unique_listener_processes_only():
