@@ -46,7 +46,19 @@ def test_silero_vad_asset_and_provenance_are_packaged() -> None:
     assert len(wheels) == 1
     with ZipFile(wheels[0]) as wheel:
         names = set(wheel.namelist())
+        assert "buddy_gateway/assets/silero_vad.onnx" in names
+        wheel_model = wheel.read("buddy_gateway/assets/silero_vad.onnx")
+        assert len(wheel_model) == MODEL_SIZE
+        assert hashlib.sha256(wheel_model).hexdigest() == MODEL_SHA256
 
-    assert "buddy_gateway/assets/silero_vad.onnx" in names
-    for path in licenses | {"THIRD_PARTY_NOTICES.md"}:
-        assert any(name.endswith(path) for name in names)
+        notice_members = [name for name in names if name.endswith("THIRD_PARTY_NOTICES.md")]
+        assert len(notice_members) == 1
+        wheel_notice = wheel.read(notice_members[0]).decode("utf-8")
+        assert XIAOZHI_COMMIT in wheel_notice
+        assert SILERO_COMMIT in wheel_notice
+
+        for license_path in licenses:
+            license_members = [name for name in names if name.endswith(license_path)]
+            assert len(license_members) == 1
+            wheel_license = wheel.read(license_members[0])
+            assert hashlib.sha256(wheel_license).hexdigest() == LICENSE_SHA256[license_path]
