@@ -83,7 +83,14 @@ function Select-GatewayVoiceLoop {
     $asrTurns = @($session.asr_turns)
     $ttsTurns = @($session.tts_turns)
     $latestAsrTurn = Get-LatestTurn -Session $session -PropertyName "asr_turns"
-    if ($latestAsrTurn -and $latestAsrTurn.status -eq "ok") {
+    if ($latestAsrTurn -and $latestAsrTurn.status -ne "ok") {
+      $message = "Gateway ASR turn '$($latestAsrTurn.turn_id)' failed with status '$($latestAsrTurn.status)'"
+      if (-not [string]::IsNullOrWhiteSpace([string]$latestAsrTurn.error)) {
+        $message = "$message`: $($latestAsrTurn.error)"
+      }
+      throw $message
+    }
+    if ($latestAsrTurn) {
       $matchingLatestTtsTurn = $ttsTurns |
         Where-Object {
           $_.status -eq "ok" -and

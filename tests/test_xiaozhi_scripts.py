@@ -1080,6 +1080,36 @@ def test_smoke_gateway_voice_loop_does_not_fall_back_to_an_older_paired_session(
     assert "Session: session-old" not in result.stdout
 
 
+def test_smoke_gateway_voice_loop_does_not_fall_back_when_latest_asr_failed():
+    script_path = SCRIPTS_DIR / "smoke_gateway_voice_loop.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function New-MockWebResponse {",
+                "  param([string]$Json)",
+                "  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)",
+                "  [pscustomobject]@{ RawContentStream = [System.IO.MemoryStream]::new($bytes) }",
+                "}",
+                "function Invoke-WebRequest {",
+                "  param([string]$Uri, [string]$Method = 'Get', [switch]$UseBasicParsing)",
+                "  return New-MockWebResponse '{\"session_count\":1,\"sessions\":[{\"session_id\":\"session-a\",\"device_id\":\"fc:01\",\"asr_turns\":[{\"turn_id\":\"asr-old\",\"status\":\"ok\",\"transcript\":\"old\",\"assistant_text\":\"old reply\"},{\"turn_id\":\"asr-new\",\"status\":\"error\",\"error\":\"ASR HTTP 401\"}],\"tts_turns\":[{\"asr_turn_id\":\"asr-old\",\"status\":\"ok\",\"provider\":\"dashscope_qwen_http\",\"audio_frame_count\":4}]}]}'",
+                "}",
+                "Invoke-SmokeGatewayVoiceLoop -GatewayBaseUrl 'http://127.0.0.1:8003'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "asr-new" in combined_output(result)
+    assert "ASR HTTP 401" in combined_output(result)
+    assert "Session: session-a" not in result.stdout
+
+
 def test_stop_local_demo_script_stops_unique_listener_processes_only():
     script_path = SCRIPTS_DIR / "stop_local_demo.ps1"
 
