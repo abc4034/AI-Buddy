@@ -65,6 +65,7 @@ class SessionRecord:
     debug_turns: list[dict[str, Any]] = field(default_factory=list)
     asr_turns: list[dict[str, Any]] = field(default_factory=list)
     tts_turns: list[dict[str, Any]] = field(default_factory=list)
+    vad_events: list[dict[str, Any]] = field(default_factory=list)
 
     def record_message(self, message_type: str, payload: dict[str, Any] | None = None) -> None:
         now = epoch_seconds()
@@ -116,6 +117,16 @@ class SessionRecord:
         self.debug_turns.append(turn)
         self.debug_turns = self.debug_turns[-20:]
         return turn
+
+    def record_vad_event(self, event: str, *, error: str | None = None) -> dict[str, Any]:
+        item = {
+            "event": event,
+            "created_at": epoch_seconds(),
+            "error": error,
+        }
+        self.vad_events.append(item)
+        self.vad_events = self.vad_events[-20:]
+        return dict(item)
 
     def start_asr_turn(self, *, trigger: str, turn_id: str | None = None) -> dict[str, Any]:
         turn = {
@@ -194,6 +205,7 @@ class SessionRecord:
             "debug_turns": list(self.debug_turns),
             "asr_turns": list(self.asr_turns),
             "tts_turns": list(self.tts_turns),
+            "vad_events": list(self.vad_events),
         }
 
 
@@ -294,12 +306,31 @@ class GatewayState:
                 error=error,
             )
 
-    def start_asr_turn(self, session_id: str, *, trigger: str) -> dict[str, Any] | None:
+    def record_vad_event(
+        self,
+        session_id: str,
+        event: str,
+        *,
+        error: str | None = None,
+    ) -> dict[str, Any] | None:
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
                 return None
-            return session.start_asr_turn(trigger=trigger)
+            return session.record_vad_event(event, error=error)
+
+    def start_asr_turn(
+        self,
+        session_id: str,
+        *,
+        trigger: str,
+        turn_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return None
+            return session.start_asr_turn(trigger=trigger, turn_id=turn_id)
 
     def update_asr_turn(self, session_id: str, turn_id: str, **updates: Any) -> dict[str, Any] | None:
         with self._lock:
