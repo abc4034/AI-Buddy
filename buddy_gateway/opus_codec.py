@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import audioop
 import wave
+from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 import opuslib_next
+
+if TYPE_CHECKING:
+    from buddy_gateway.tts import TTSPcmChunk
 
 
 @dataclass(frozen=True)
@@ -128,3 +133,53 @@ def encode_pcm16_mono_to_opus_frames(
     finally:
         del encoder
     return frames
+
+
+async def encode_pcm16_mono_chunks_to_opus_frames(
+    chunks: AsyncIterable[TTSPcmChunk],
+    *,
+    sample_rate: int = 16000,
+    frame_duration_ms: int = 60,
+) -> AsyncIterator[bytes]:
+    frame_size = int(sample_rate * frame_duration_ms / 1000)
+    frame_byte_count = frame_size * 2
+    encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
+    pcm_carry = bytearray()
+    source_sample_rate: int | None = None
+    rate_state = None
+
+    try:
+        async for chunk in chunks:
+            if chunk.sample_rate <= 0:
+                raise ValueError("PCM chunk sample rate must be positive")
+            if source_sample_rate is None:
+                source_sample_rate = chunk.sample_rate
+            elif source_sample_rate != chunk.sample_rate:
+                raise ValueError("PCM chunk sample rate changed during stream")
+
+            pcm = bytes(chunk.pcm16_mono)
+            if len(pcm) % 2:
+                raise ValueError("PCM16 mono chunks must contain complete samples")
+            if chunk.sample_rate != sample_rate:
+                pcm, rate_state = audioop.ratecv(
+                    pcm,
+                    2,
+                    1,
+                    chunk.sample_rate,
+                    sample_rate,
+                    rate_state,
+                )
+            pcm_carry.extend(pcm)
+
+            while len(pcm_carry) >= frame_byte_count:
+                frame = bytes(pcm_carry[:frame_byte_count])
+                del pcm_carry[:frame_byte_count]
+                yield encoder.encode(frame, frame_size)
+            if chunk.is_final:
+                break
+
+        if pcm_carry:
+            pcm_carry.extend(b"\x00" * (frame_byte_count - len(pcm_carry)))
+            yield encoder.encode(bytes(pcm_carry), frame_size)
+    finally:
+        del encoder
