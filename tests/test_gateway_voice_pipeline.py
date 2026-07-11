@@ -11,8 +11,14 @@ from buddy_gateway.voice_pipeline import GatewayVoicePipeline, TurnAudio
 
 
 class FakeVADSession:
-    def __init__(self, decisions: list[VADDecision] | None = None) -> None:
+    def __init__(
+        self,
+        decisions: list[VADDecision] | None = None,
+        *,
+        listen_mode: str = "auto",
+    ) -> None:
         self.decisions = list(decisions or [])
+        self.listen_mode = listen_mode
         self.analyzed: list[bytes] = []
         self.reset_count = 0
         self.close_count = 0
@@ -22,6 +28,8 @@ class FakeVADSession:
         self.analyzed.append(pcm_frame)
         if self.error is not None:
             raise self.error
+        if self.listen_mode == "manual":
+            return decision(voice=True)
         if self.decisions:
             return self.decisions.pop(0)
         return decision()
@@ -55,8 +63,11 @@ class FakeProcessor:
         self.transcript = "hello"
         self.transcribe_started: asyncio.Event | None = None
         self.release_transcribe: asyncio.Event | None = None
+        self.text_started: asyncio.Event | None = None
+        self.release_text: asyncio.Event | None = None
         self.suppress_cancellation = False
         self.error: Exception | None = None
+        self.text_error: Exception | None = None
 
     async def transcribe(self, turn_id: str, audio: TurnAudio) -> str:
         self.audio_calls.append((turn_id, audio))
@@ -74,6 +85,16 @@ class FakeProcessor:
 
     async def process_text(self, turn_id: str, text: str) -> None:
         self.text_calls.append((turn_id, text))
+        if self.text_started is not None:
+            self.text_started.set()
+        if self.release_text is not None:
+            try:
+                await self.release_text.wait()
+            except asyncio.CancelledError:
+                if not self.suppress_cancellation:
+                    raise
+        if self.text_error is not None:
+            raise self.text_error
 
 
 def decision(*, voice: bool = False, stopped: bool = False) -> VADDecision:
@@ -100,7 +121,7 @@ def make_pipeline(
     mode: str = "auto",
     decisions: list[VADDecision] | None = None,
 ) -> tuple[GatewayVoicePipeline, GatewaySessionRuntime, FakeVADSession, FakeDecoder, FakeProcessor, GatewayState]:
-    vad = FakeVADSession(decisions)
+    vad = FakeVADSession(decisions, listen_mode=mode)
     decoder = FakeDecoder()
     state = GatewayState()
     session = state.start_session(
@@ -194,6 +215,22 @@ async def test_manual_bypasses_vad_and_finalizes_only_on_listen_stop():
 
 
 @pytest.mark.asyncio
+async def test_listen_start_switches_manual_vad_session_to_auto_inference():
+    decisions = [decision(voice=True)] + [decision()] * 14 + [decision(stopped=True)]
+    pipeline, runtime, vad, _, processor, _ = make_pipeline(mode="manual", decisions=decisions)
+
+    await pipeline.handle_listen({"state": "start", "mode": "auto"})
+    for index in range(16):
+        await pipeline.handle_audio(frame(index))
+    await wait_for_turn(runtime)
+
+    assert runtime.listen_mode == "auto"
+    assert vad.listen_mode == "auto"
+    assert len(vad.analyzed) == 16
+    assert len(processor.audio_calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_audio_is_ignored_until_listen_start():
     pipeline, runtime, vad, decoder, processor, _ = make_pipeline(mode="manual")
 
@@ -252,6 +289,42 @@ async def test_abort_generation_blocks_next_paid_stage_even_if_transcribe_suppre
     assert runtime.turn_generation == generation_before_abort + 1
     assert processor.text_calls == []
     assert state.session_summary(runtime.session_id)["asr_turns"][0]["status"] == "aborted"
+
+
+@pytest.mark.asyncio
+async def test_stale_transcribe_error_records_aborted_without_pipeline_error():
+    pipeline, runtime, _, _, processor, state = make_pipeline(mode="manual")
+    processor.transcribe_started = asyncio.Event()
+    processor.release_transcribe = asyncio.Event()
+    processor.suppress_cancellation = True
+    processor.error = RuntimeError("stale asr failure")
+
+    await pipeline.handle_listen({"state": "start", "mode": "manual"})
+    await pipeline.handle_audio(frame(1))
+    await pipeline.handle_listen({"state": "stop"})
+    await processor.transcribe_started.wait()
+    await pipeline.handle_abort()
+
+    summary = state.session_summary(runtime.session_id)
+    assert summary["asr_turns"][0]["status"] == "aborted"
+    assert summary["vad_events"] == []
+
+
+@pytest.mark.asyncio
+async def test_stale_detect_error_does_not_record_pipeline_diagnostic():
+    pipeline, runtime, _, _, processor, state = make_pipeline()
+    processor.text_started = asyncio.Event()
+    processor.release_text = asyncio.Event()
+    processor.suppress_cancellation = True
+    processor.text_error = RuntimeError("stale detect failure")
+
+    await pipeline.handle_listen({"state": "detect", "text": "typed words"})
+    await processor.text_started.wait()
+    await pipeline.handle_abort()
+
+    summary = state.session_summary(runtime.session_id)
+    assert summary["asr_turns"] == []
+    assert summary["vad_events"] == []
 
 
 @pytest.mark.asyncio

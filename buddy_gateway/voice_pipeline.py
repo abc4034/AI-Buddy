@@ -57,6 +57,7 @@ class GatewayVoicePipeline:
             mode = payload.get("mode")
             if mode in {"auto", "manual"}:
                 self._runtime.listen_mode = mode
+                setattr(self._runtime.vad_session, "listen_mode", mode)
             self._runtime.reset_input()
             self._listening = True
             return
@@ -194,6 +195,9 @@ class GatewayVoicePipeline:
             self._mark_aborted(turn_id)
             raise
         except Exception as exc:
+            if not self._is_current(turn_id, generation):
+                self._mark_aborted(turn_id)
+                return
             self._record_event("pipeline_error", error=str(exc))
             self._state.update_asr_turn(
                 self._runtime.session_id,
@@ -211,7 +215,8 @@ class GatewayVoicePipeline:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._record_event("pipeline_error", error=str(exc))
+            if self._is_current(turn_id, generation):
+                self._record_event("pipeline_error", error=str(exc))
 
     async def _invalidate_active(self, reason: str) -> int:
         generation = self._runtime.invalidate_turn(reason)
