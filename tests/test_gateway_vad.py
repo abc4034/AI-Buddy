@@ -1,16 +1,55 @@
+from collections import deque
 from dataclasses import FrozenInstanceError
+import math
 
+import numpy as np
 import pytest
 
 from buddy_gateway.config import GatewaySettings
 from buddy_gateway.server import build_parser
 from buddy_gateway.vad import (
+    IMPLEMENTED_VAD_PROVIDERS,
+    PLANNED_VAD_PROVIDERS,
+    SileroVADProvider,
     VADDecision,
-    VADProviderError,
-    VADProviderNotImplemented,
     build_vad_provider,
     vad_provider_catalog,
 )
+
+
+PCM_CHUNK = b"\x00\x00" * 512
+PCM_FRAME = b"\x00\x00" * 960
+
+
+class SequenceRunner:
+    def __init__(self, probabilities: list[float]) -> None:
+        self.probabilities = deque(probabilities)
+        self.inputs: list[np.ndarray] = []
+        self.states: list[np.ndarray] = []
+
+    def run(self, audio_input: np.ndarray, state: np.ndarray) -> tuple[float, np.ndarray]:
+        self.inputs.append(audio_input.copy())
+        self.states.append(state.copy())
+        return self.probabilities.popleft(), state + 1
+
+
+class SequenceClock:
+    def __init__(self, times_ms: list[float]) -> None:
+        self.times_ms = deque(times_ms)
+
+    def __call__(self) -> float:
+        return self.times_ms.popleft()
+
+
+def make_provider(
+    probabilities: list[float],
+    *,
+    times_ms: list[float] | None = None,
+) -> tuple[SileroVADProvider, SequenceRunner]:
+    runner = SequenceRunner(probabilities)
+    clock = SequenceClock(times_ms or [float(index) for index in range(len(probabilities))])
+    provider = SileroVADProvider(GatewaySettings(), runner=runner, monotonic_ms=clock)
+    return provider, runner
 
 
 def test_vad_decision_is_an_immutable_frame_result():
@@ -27,22 +66,120 @@ def test_vad_decision_is_an_immutable_frame_result():
         decision.has_voice = False
 
 
-def test_silero_vad_is_selectable_but_fails_as_a_planned_provider():
+def test_silero_hysteresis_retains_previous_chunk_state_between_thresholds():
+    provider, _ = make_provider([0.6, 0.3, 0.1, 0.3, 0.6])
+    session = provider.create_session()
+
+    decisions = [session.analyze(PCM_CHUNK) for _ in range(5)]
+
+    assert [decision.has_voice for decision in decisions] == [False, False, False, False, True]
+    assert decisions[-1].speech_probability == 0.6
+
+
+def test_silero_votes_at_chunk_level_and_carries_partial_60ms_frames():
+    provider, runner = make_provider([0.9, 0.9, 0.9])
+    session = provider.create_session()
+
+    first = session.analyze(PCM_FRAME)
+    second = session.analyze(PCM_FRAME)
+
+    assert first.has_voice is False
+    assert second.has_voice is True
+    assert len(runner.inputs) == 3
+    assert all(audio_input.shape == (1, 576) for audio_input in runner.inputs)
+
+
+def test_silero_marks_stop_only_after_voted_speech_and_1000ms_trailing_silence():
+    provider, _ = make_provider(
+        [0.9, 0.9, 0.9, 0.0, 0.0, 0.0, 0.0],
+        times_ms=[0.0, 100.0, 200.0, 300.0, 400.0, 1399.0, 1400.0],
+    )
+    session = provider.create_session()
+
+    decisions = [session.analyze(PCM_CHUNK) for _ in range(7)]
+
+    assert decisions[2].has_voice is True
+    assert decisions[5].has_voice is False
+    assert decisions[5].speech_stopped is False
+    assert decisions[6].speech_stopped is True
+
+
+def test_silero_reset_clears_hysteresis_window_carry_and_inference_tensors():
+    provider, runner = make_provider([0.9, 0.9, 0.9, 0.9])
+    session = provider.create_session()
+    session.analyze(PCM_FRAME)
+    session.analyze(PCM_FRAME)
+    assert session.analyze(b"").has_voice is True
+
+    session.reset()
+    calls_after_reset = len(runner.inputs)
+    decision = session.analyze(b"\x00\x00" * 128)
+
+    assert len(runner.inputs) == calls_after_reset
+
+    decision = session.analyze(b"\x00\x00" * 384)
+
+    assert decision.has_voice is False
+    assert np.count_nonzero(runner.states[-1]) == 0
+    assert np.count_nonzero(runner.inputs[-1][:, :64]) == 0
+
+
+def test_two_silero_sessions_keep_inference_and_voice_state_independent():
+    class AmplitudeRunner:
+        def run(self, audio_input: np.ndarray, state: np.ndarray) -> tuple[float, np.ndarray]:
+            return (0.9 if np.max(audio_input) > 0 else 0.0), state + 1
+
+    provider = SileroVADProvider(GatewaySettings(), runner=AmplitudeRunner(), monotonic_ms=lambda: 0.0)
+    voice_session = provider.create_session()
+    silence_session = provider.create_session()
+    loud_chunk = np.full(512, 16000, dtype=np.int16).tobytes()
+
+    for _ in range(3):
+        voice_decision = voice_session.analyze(loud_chunk)
+        silence_decision = silence_session.analyze(PCM_CHUNK)
+
+    assert voice_decision.has_voice is True
+    assert silence_decision.has_voice is False
+
+
+def test_silero_manual_mode_accepts_audio_without_running_inference():
+    provider, runner = make_provider([])
+    session = provider.create_session(listen_mode="manual")
+
+    decision = session.analyze(PCM_FRAME)
+
+    assert decision == VADDecision(speech_probability=1.0, has_voice=True, speech_stopped=False)
+    assert runner.inputs == []
+
+
+def test_packaged_silero_onnx_loads_on_cpu_and_analyzes_silence():
+    provider = SileroVADProvider(GatewaySettings())
+    session = provider.create_session()
+
+    decision = session.analyze(PCM_FRAME)
+
+    assert provider.execution_providers == ["CPUExecutionProvider"]
+    assert math.isfinite(decision.speech_probability)
+    assert 0.0 <= decision.speech_probability <= 1.0
+    assert decision.has_voice is False
+
+
+def test_silero_vad_is_the_implemented_default_provider():
     provider = build_vad_provider(GatewaySettings())
 
-    assert isinstance(provider, VADProviderNotImplemented)
+    assert isinstance(provider, SileroVADProvider)
     assert provider.provider_name == "silero"
-    with pytest.raises(VADProviderError, match="VAD provider 'silero' is planned but not implemented"):
-        provider.create_session()
+    assert IMPLEMENTED_VAD_PROVIDERS == ("silero",)
+    assert PLANNED_VAD_PROVIDERS == ()
 
 
-def test_vad_catalog_reports_stable_planned_provider_slot():
+def test_vad_catalog_reports_silero_as_implemented():
     catalog = vad_provider_catalog(GatewaySettings())
 
     assert catalog == {
         "current_provider": "silero",
-        "implemented": [],
-        "planned": ["silero"],
+        "implemented": ["silero"],
+        "planned": [],
     }
 
 

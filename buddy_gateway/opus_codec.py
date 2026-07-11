@@ -19,6 +19,27 @@ class DecodedWav:
     pcm_bytes: bytes = b""
 
 
+def decode_opus_frame_to_pcm(
+    decoder: opuslib_next.Decoder,
+    opus_frame: bytes,
+    *,
+    frame_size: int = 960,
+) -> bytes:
+    return decoder.decode(opus_frame, frame_size)
+
+
+def release_opus_decoder(decoder: opuslib_next.Decoder) -> None:
+    close = getattr(decoder, "close", None)
+    if callable(close):
+        close()
+        return
+
+    decoder_state = getattr(decoder, "decoder_state", None)
+    if decoder_state is not None:
+        opuslib_next.api.decoder.destroy(decoder_state)
+        del decoder.decoder_state
+
+
 def decode_opus_frames_to_wav(
     opus_frames: list[bytes],
     *,
