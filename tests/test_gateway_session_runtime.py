@@ -112,3 +112,22 @@ async def test_runtime_close_cancels_turn_and_releases_resources_exactly_once():
     assert decoder.close_count == 1
     assert runtime.closing is False
     assert runtime.closed is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_close_releases_resources_after_an_already_failed_turn_task():
+    runtime, vad, decoder = make_runtime()
+
+    async def failed_turn() -> None:
+        raise RuntimeError("turn failed")
+
+    runtime.turn_task = asyncio.create_task(failed_turn())
+    await asyncio.sleep(0)
+
+    await runtime.close()
+    await runtime.close()
+
+    assert vad.close_count == 1
+    assert decoder.close_count == 1
+    assert runtime.closing is False
+    assert runtime.closed is True

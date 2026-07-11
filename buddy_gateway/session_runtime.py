@@ -61,6 +61,8 @@ class GatewaySessionRuntime:
                         await self.turn_task
                     except asyncio.CancelledError:
                         pass
+                    except Exception:
+                        pass
                 self.vad_session.close()
                 release_opus_decoder(self.opus_decoder)
                 self.closed = True

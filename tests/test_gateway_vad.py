@@ -125,21 +125,30 @@ def test_silero_reset_clears_hysteresis_window_carry_and_inference_tensors():
 
 
 def test_two_silero_sessions_keep_inference_and_voice_state_independent():
-    class AmplitudeRunner:
+    class StateIsolationRunner:
+        def __init__(self) -> None:
+            self.calls_by_sample: dict[int, int] = {}
+
         def run(self, audio_input: np.ndarray, state: np.ndarray) -> tuple[float, np.ndarray]:
-            return (0.9 if np.max(audio_input) > 0 else 0.0), state + 1
+            sample = int(round(float(audio_input[0, -1]) * 32768))
+            expected_state_value = self.calls_by_sample.get(sample, 0)
+            assert np.all(state == expected_state_value)
+            self.calls_by_sample[sample] = expected_state_value + 1
+            return 0.9, np.full_like(state, expected_state_value + 1)
 
-    provider = SileroVADProvider(GatewaySettings(), runner=AmplitudeRunner(), monotonic_ms=lambda: 0.0)
-    voice_session = provider.create_session()
-    silence_session = provider.create_session()
-    loud_chunk = np.full(512, 16000, dtype=np.int16).tobytes()
+    provider = SileroVADProvider(GatewaySettings(), runner=StateIsolationRunner(), monotonic_ms=lambda: 0.0)
+    first_session = provider.create_session()
+    second_session = provider.create_session()
+    first_chunk = np.full(512, 12000, dtype=np.int16).tobytes()
+    second_chunk = np.full(512, 24000, dtype=np.int16).tobytes()
 
-    for _ in range(3):
-        voice_decision = voice_session.analyze(loud_chunk)
-        silence_decision = silence_session.analyze(PCM_CHUNK)
+    first_session.analyze(first_chunk)
+    first_session.analyze(first_chunk)
+    second_decision = second_session.analyze(second_chunk)
+    first_decision = first_session.analyze(first_chunk)
 
-    assert voice_decision.has_voice is True
-    assert silence_decision.has_voice is False
+    assert first_decision.has_voice is True
+    assert second_decision.has_voice is False
 
 
 def test_silero_manual_mode_accepts_audio_without_running_inference():
@@ -162,6 +171,7 @@ def test_packaged_silero_onnx_loads_on_cpu_and_analyzes_silence():
     assert math.isfinite(decision.speech_probability)
     assert 0.0 <= decision.speech_probability <= 1.0
     assert decision.has_voice is False
+    assert decision.speech_stopped is False
 
 
 def test_silero_vad_is_the_implemented_default_provider():
