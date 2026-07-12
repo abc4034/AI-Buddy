@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from buddy_gateway.audio_frames import ParsedAudioFrame
+from buddy_gateway.config import require_positive_frame_count
 from buddy_gateway.session_runtime import GatewaySessionRuntime
 from buddy_gateway.state import GatewayState, new_asr_turn_id
 
@@ -43,11 +44,19 @@ class GatewayVoicePipeline:
         state: GatewayState,
         processor: VoiceTurnProcessor,
         turn_id_factory: Callable[[], str] = new_asr_turn_id,
+        vad_preroll_frames: int = PREROLL_FRAME_LIMIT,
+        vad_min_turn_frames: int = MIN_AUTO_TURN_FRAMES,
     ) -> None:
         self._runtime = runtime
         self._state = state
         self._processor = processor
         self._turn_id_factory = turn_id_factory
+        self._vad_preroll_frames = require_positive_frame_count(
+            "vad_preroll_frames", vad_preroll_frames
+        )
+        self._vad_min_turn_frames = require_positive_frame_count(
+            "vad_min_turn_frames", vad_min_turn_frames
+        )
         self._listening = False
 
     async def handle_listen(self, payload: dict[str, Any]) -> None:
@@ -63,9 +72,8 @@ class GatewayVoicePipeline:
             return
 
         if listen_state == "stop":
-            if self._runtime.listen_mode == "manual":
-                self._listening = False
-                await self._finalize_audio_turn(trigger="listen_stop")
+            self._listening = False
+            await self._finalize_audio_turn(trigger="listen_stop")
             return
 
         if listen_state == "detect":
@@ -105,7 +113,7 @@ class GatewayVoicePipeline:
 
         if not self._runtime.turn_pcm_frames:
             if not vad.has_voice:
-                while len(self._runtime.preroll_pcm) >= PREROLL_FRAME_LIMIT:
+                while len(self._runtime.preroll_pcm) >= self._vad_preroll_frames:
                     self._runtime.preroll_pcm.popleft()
                 self._runtime.preroll_pcm.append(pcm_frame)
                 return
@@ -119,7 +127,7 @@ class GatewayVoicePipeline:
             return
 
         self._record_event("speech_stop")
-        if len(self._runtime.turn_pcm_frames) < MIN_AUTO_TURN_FRAMES:
+        if len(self._runtime.turn_pcm_frames) < self._vad_min_turn_frames:
             self._record_event("discarded_short_turn")
             self._runtime.reset_input()
             return

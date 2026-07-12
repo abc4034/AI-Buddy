@@ -147,9 +147,29 @@ async def test_play_bursts_five_frames_then_uses_absolute_60ms_schedule() -> Non
     result = await sender.play("turn-a", 7, "paced", frames(*(bytes([index]) for index in range(7))))
 
     frame_times = [timestamp for kind, _, timestamp in websocket.events if kind == "bytes"]
-    assert frame_times == pytest.approx([0.0, 0.01, 0.02, 0.03, 0.04, 0.06, 0.12])
-    assert clock.sleeps == pytest.approx([0.01, 0.05, 0.42])
+    assert frame_times == pytest.approx([0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.11])
+    assert clock.sleeps == pytest.approx([0.05, 0.42])
     assert result.frame_count == 7
+
+
+@pytest.mark.asyncio
+async def test_queued_pacing_rebases_after_producer_gap_without_catch_up() -> None:
+    clock = FakeClock()
+    websocket = RecordingWebSocket(clock, frame_send_seconds=0.010)
+    sender = make_sender(websocket, clock)
+
+    async def gapped_frames() -> AsyncIterator[bytes]:
+        for index in range(6):
+            yield bytes([index])
+        clock.now += 0.120
+        yield b"resume-a"
+        yield b"resume-b"
+
+    result = await sender.play("turn-a", 7, "paced", gapped_frames())
+
+    frame_times = [timestamp for kind, _, timestamp in websocket.events if kind == "bytes"]
+    assert frame_times == pytest.approx([0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.18, 0.24])
+    assert result.frame_count == 8
 
 
 @pytest.mark.asyncio

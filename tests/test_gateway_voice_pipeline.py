@@ -120,6 +120,8 @@ def make_pipeline(
     *,
     mode: str = "auto",
     decisions: list[VADDecision] | None = None,
+    vad_preroll_frames: int = 10,
+    vad_min_turn_frames: int = 16,
 ) -> tuple[GatewayVoicePipeline, GatewaySessionRuntime, FakeVADSession, FakeDecoder, FakeProcessor, GatewayState]:
     vad = FakeVADSession(decisions, listen_mode=mode)
     decoder = FakeDecoder()
@@ -143,6 +145,8 @@ def make_pipeline(
         state=state,
         processor=processor,
         turn_id_factory=lambda: next(ids),
+        vad_preroll_frames=vad_preroll_frames,
+        vad_min_turn_frames=vad_min_turn_frames,
     )
     return pipeline, runtime, vad, decoder, processor, state
 
@@ -212,6 +216,65 @@ async def test_manual_bypasses_vad_and_finalizes_only_on_listen_stop():
     assert audio.opus_frames == (b"opus-0", b"opus-1", b"opus-2")
     assert audio.frame_count == 3
     assert vad.analyzed == []
+
+
+@pytest.mark.asyncio
+async def test_auto_listen_stop_finalizes_buffered_speech_exactly_once_before_vad_silence():
+    pipeline, runtime, _, _, processor, _ = make_pipeline(
+        decisions=[decision(voice=True), decision()]
+    )
+
+    await pipeline.handle_listen({"state": "start", "mode": "auto"})
+    await pipeline.handle_audio(frame(0))
+    await pipeline.handle_audio(frame(1))
+    await pipeline.handle_listen({"state": "stop"})
+    await wait_for_turn(runtime)
+    await pipeline.handle_listen({"state": "stop"})
+
+    assert len(processor.audio_calls) == 1
+    assert processor.audio_calls[0][1].frame_count == 2
+
+
+@pytest.mark.asyncio
+async def test_non_default_preroll_limit_changes_auto_turn_segmentation():
+    pipeline, runtime, _, _, processor, _ = make_pipeline(
+        decisions=[decision()] * 4 + [decision(voice=True), decision(stopped=True)],
+        vad_preroll_frames=2,
+        vad_min_turn_frames=4,
+    )
+
+    await pipeline.handle_listen({"state": "start", "mode": "auto"})
+    for index in range(6):
+        await pipeline.handle_audio(frame(index))
+    await wait_for_turn(runtime)
+
+    audio = processor.audio_calls[0][1]
+    assert audio.pcm_bytes == b"".join(b"pcm:" + frame(index).payload for index in range(2, 6))
+    assert audio.frame_count == 4
+
+
+@pytest.mark.asyncio
+async def test_non_default_minimum_accepts_shorter_auto_turn():
+    pipeline, runtime, _, _, processor, _ = make_pipeline(
+        decisions=[decision(voice=True), decision(stopped=True)],
+        vad_min_turn_frames=2,
+    )
+
+    await pipeline.handle_listen({"state": "start", "mode": "auto"})
+    await pipeline.handle_audio(frame(0))
+    await pipeline.handle_audio(frame(1))
+    await wait_for_turn(runtime)
+
+    assert len(processor.audio_calls) == 1
+    assert processor.audio_calls[0][1].frame_count == 2
+
+
+@pytest.mark.parametrize("field", ["vad_preroll_frames", "vad_min_turn_frames"])
+def test_pipeline_rejects_non_positive_segmentation_values(field: str):
+    kwargs = {field: 0}
+
+    with pytest.raises(ValueError, match=field):
+        make_pipeline(**kwargs)
 
 
 @pytest.mark.asyncio

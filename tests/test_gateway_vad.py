@@ -226,3 +226,18 @@ def test_gateway_vad_cli_accepts_environment_overrides(monkeypatch):
     assert args.vad_voice_votes == 4
     assert args.vad_preroll_frames == 12
     assert args.vad_min_turn_frames == 20
+
+
+@pytest.mark.parametrize("field", ["vad_preroll_frames", "vad_min_turn_frames"])
+def test_gateway_settings_reject_non_positive_segmentation_values(field):
+    with pytest.raises(ValueError, match=field):
+        GatewaySettings(**{field: 0})
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["--vad-preroll-frames", "--vad-min-turn-frames"],
+)
+def test_gateway_vad_cli_rejects_non_positive_segmentation_values(option):
+    with pytest.raises(SystemExit):
+        build_parser().parse_args([option, "0"])

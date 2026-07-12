@@ -97,16 +97,31 @@ class DeviceAudioSender:
             if not await self._send_control(playback, "sentence_start", text=text):
                 return self._aborted_result(playback)
 
-            schedule_origin = self._monotonic()
-            async for opus_frame in opus_frames:
+            queued_origin: float | None = None
+            iterator = opus_frames.__aiter__()
+            while True:
+                producer_wait_started = self._monotonic()
+                try:
+                    opus_frame = await anext(iterator)
+                except StopAsyncIteration:
+                    break
+                frame_acquired_at = self._monotonic()
                 if not self._is_current_and_open(playback):
                     return self._aborted_result(playback)
 
                 frame_index = playback.frame_count
                 if frame_index >= self.BURST_FRAME_COUNT:
-                    target = schedule_origin + (
-                        frame_index - self.BURST_FRAME_COUNT + 1
+                    queued_position = (
+                        frame_index - self.BURST_FRAME_COUNT
                     ) * self.FRAME_INTERVAL_SECONDS
+                    if queued_origin is None:
+                        queued_origin = frame_acquired_at
+                    elif (
+                        frame_acquired_at - producer_wait_started
+                        >= self.FRAME_INTERVAL_SECONDS
+                    ):
+                        queued_origin = frame_acquired_at - queued_position
+                    target = queued_origin + queued_position
                     delay = target - self._monotonic()
                     if delay > 0:
                         await self._sleep(delay)

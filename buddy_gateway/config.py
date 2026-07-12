@@ -11,6 +11,12 @@ from buddy_gateway.tts import DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE
 WEBSOCKET_PATH = "/xiaozhi/v1/"
 
 
+def require_positive_frame_count(name: str, value: int) -> int:
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return value
+
+
 @dataclass(frozen=True)
 class GatewaySettings:
     host: str = "0.0.0.0"
@@ -43,6 +49,10 @@ class GatewaySettings:
     tts_language: str = field(default_factory=lambda: os.environ.get("TTS_LANGUAGE", "auto"))
     tts_timeout_seconds: float = 60.0
     tts_frame_delay_ms: int = 60
+
+    def __post_init__(self) -> None:
+        require_positive_frame_count("vad_preroll_frames", self.vad_preroll_frames)
+        require_positive_frame_count("vad_min_turn_frames", self.vad_min_turn_frames)
 
     def advertised_host(self) -> str:
         if self.advertise_host:

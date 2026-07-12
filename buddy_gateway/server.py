@@ -9,13 +9,21 @@ import uvicorn
 
 from buddy_gateway.app import create_http_app, create_websocket_app
 from buddy_gateway.asr import build_asr_provider
-from buddy_gateway.config import GatewaySettings
+from buddy_gateway.config import GatewaySettings, require_positive_frame_count
 from buddy_gateway.core_client import BuddyCoreClient
 from buddy_gateway.state import GatewayState
 from buddy_gateway.tts import DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE, build_tts_provider
 
 
 logger = logging.getLogger(__name__)
+
+
+def _positive_frame_count(value: str) -> int:
+    parsed = int(value)
+    try:
+        return require_positive_frame_count("frame count", parsed)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 async def serve(settings: GatewaySettings) -> None:
@@ -84,8 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vad-min-silence-ms", type=int, default=int(os.environ.get("VAD_MIN_SILENCE_MS", "1000")), help="Silence required to end a speech turn.")
     parser.add_argument("--vad-window-size", type=int, default=int(os.environ.get("VAD_WINDOW_SIZE", "5")), help="VAD voting window size in frames.")
     parser.add_argument("--vad-voice-votes", type=int, default=int(os.environ.get("VAD_VOICE_VOTES", "3")), help="Voice votes required within the VAD window.")
-    parser.add_argument("--vad-preroll-frames", type=int, default=int(os.environ.get("VAD_PREROLL_FRAMES", "10")), help="Audio frames retained before speech detection.")
-    parser.add_argument("--vad-min-turn-frames", type=int, default=int(os.environ.get("VAD_MIN_TURN_FRAMES", "16")), help="Minimum audio frames in an automatic turn.")
+    parser.add_argument("--vad-preroll-frames", type=_positive_frame_count, default=int(os.environ.get("VAD_PREROLL_FRAMES", "10")), help="Audio frames retained before speech detection.")
+    parser.add_argument("--vad-min-turn-frames", type=_positive_frame_count, default=int(os.environ.get("VAD_MIN_TURN_FRAMES", "16")), help="Minimum audio frames in an automatic turn.")
     parser.add_argument(
         "--asr-provider",
         default=os.environ.get("ASR_PROVIDER", "disabled"),
