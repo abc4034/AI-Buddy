@@ -42,6 +42,40 @@ class RecordingWebSocket:
         self.clock.now += self.frame_send_seconds
 
 
+class CancellationDelayingBytesWebSocket(RecordingWebSocket):
+    def __init__(self, clock: FakeClock) -> None:
+        super().__init__(clock)
+        self.bytes_entered = asyncio.Event()
+        self.bytes_release = asyncio.Event()
+
+    async def send_bytes(self, payload: bytes) -> None:
+        if payload != b"first":
+            await super().send_bytes(payload)
+            return
+
+        self.bytes_entered.set()
+        try:
+            await self.bytes_release.wait()
+        except asyncio.CancelledError:
+            await self.bytes_release.wait()
+            await super().send_bytes(payload)
+            raise
+        await super().send_bytes(payload)
+
+
+class BlockingStopWebSocket(RecordingWebSocket):
+    def __init__(self, clock: FakeClock) -> None:
+        super().__init__(clock)
+        self.stop_entered = asyncio.Event()
+        self.stop_release = asyncio.Event()
+
+    async def send_json(self, payload: dict[str, object]) -> None:
+        if payload.get("state") == "stop":
+            self.stop_entered.set()
+            await self.stop_release.wait()
+        await super().send_json(payload)
+
+
 async def frames(*payloads: bytes) -> AsyncIterator[bytes]:
     for payload in payloads:
         yield payload
@@ -168,6 +202,99 @@ async def test_abort_cancels_blocked_iteration_and_repeated_abort_sends_one_stop
 
 
 @pytest.mark.asyncio
+async def test_abort_waits_for_cancelled_send_bytes_before_sending_stop() -> None:
+    clock = FakeClock()
+    websocket = CancellationDelayingBytesWebSocket(clock)
+    sender = make_sender(websocket, clock)
+    play_task = asyncio.create_task(sender.play("turn-a", 7, "abort", frames(b"first")))
+    await websocket.bytes_entered.wait()
+
+    abort_task = asyncio.create_task(sender.abort("device abort"))
+    await asyncio.sleep(0)
+    abort_waited_for_send = not abort_task.done()
+    websocket.bytes_release.set()
+    await abort_task
+    result = await play_task
+
+    assert abort_waited_for_send
+    assert [(kind, payload) for kind, payload, _ in websocket.events] == [
+        ("json", {"type": "tts", "state": "start", "session_id": "session-a"}),
+        (
+            "json",
+            {
+                "type": "tts",
+                "state": "sentence_start",
+                "session_id": "session-a",
+                "text": "abort",
+            },
+        ),
+        ("bytes", b"first"),
+        ("json", {"type": "tts", "state": "stop", "session_id": "session-a"}),
+    ]
+    assert result.status == "aborted"
+
+
+@pytest.mark.asyncio
+async def test_abort_during_normal_stop_awaits_one_successful_delivery() -> None:
+    clock = FakeClock()
+    websocket = BlockingStopWebSocket(clock)
+    sender = make_sender(websocket, clock)
+    play_task = asyncio.create_task(sender.play("turn-a", 7, "stop race", frames(b"audio")))
+    await websocket.stop_entered.wait()
+
+    abort_task = asyncio.create_task(sender.abort("device abort"))
+    await asyncio.sleep(0)
+    abort_waited_for_stop = not abort_task.done()
+    websocket.stop_release.set()
+    await abort_task
+    result = await play_task
+
+    stops = [
+        payload
+        for kind, payload, _ in websocket.events
+        if kind == "json" and payload.get("state") == "stop"
+    ]
+    assert abort_waited_for_stop
+    assert len(stops) == 1
+    assert result.status == "aborted"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_play_waits_for_previous_playback_to_stop() -> None:
+    clock = FakeClock()
+    websocket = CancellationDelayingBytesWebSocket(clock)
+    sender = DeviceAudioSender(
+        websocket,
+        session_id="session-a",
+        is_generation_current=lambda _turn_id, _generation: True,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+        is_open=lambda: websocket.open,
+    )
+    first_task = asyncio.create_task(sender.play("turn-a", 7, "first", frames(b"first")))
+    await websocket.bytes_entered.wait()
+
+    second_task = asyncio.create_task(sender.play("turn-b", 8, "second", frames(b"second")))
+    await asyncio.sleep(0)
+    second_started_while_first_was_blocked = any(
+        kind == "json" and payload.get("state") == "start"
+        for kind, payload, _ in websocket.events[2:]
+    )
+    websocket.bytes_release.set()
+    first_result, second_result = await asyncio.gather(first_task, second_task)
+
+    states = [payload["state"] for kind, payload, _ in websocket.events if kind == "json"]
+    assert not second_started_while_first_was_blocked
+    assert states == ["start", "sentence_start", "stop", "start", "sentence_start", "stop"]
+    assert [payload for kind, payload, _ in websocket.events if kind == "bytes"] == [
+        b"first",
+        b"second",
+    ]
+    assert first_result.status == "aborted"
+    assert second_result.status == "ok"
+
+
+@pytest.mark.asyncio
 async def test_disconnect_close_cancels_playback_without_stop_or_tail_sleep() -> None:
     clock = FakeClock()
     websocket = RecordingWebSocket(clock)
@@ -187,6 +314,38 @@ async def test_disconnect_close_cancels_playback_without_stop_or_tail_sleep() ->
     states = [payload["state"] for kind, payload, _ in websocket.events if kind == "json"]
     assert states == ["start", "sentence_start"]
     assert clock.sleeps == []
+    assert result.status == "aborted"
+
+
+@pytest.mark.asyncio
+async def test_disconnect_close_suppresses_abort_stop_already_in_flight() -> None:
+    clock = FakeClock()
+    websocket = BlockingStopWebSocket(clock)
+    sender = make_sender(websocket, clock)
+    blocked = asyncio.Event()
+
+    async def blocked_frames() -> AsyncIterator[bytes]:
+        yield b"first"
+        await blocked.wait()
+
+    play_task = asyncio.create_task(sender.play("turn-a", 7, "disconnect", blocked_frames()))
+    await websocket.frame_sent.wait()
+    abort_task = asyncio.create_task(sender.abort("device abort"))
+    await websocket.stop_entered.wait()
+
+    await sender.close(send_stop=False)
+    await sender.close(send_stop=False)
+    await asyncio.sleep(0)
+    abort_finished_before_release = abort_task.done()
+    websocket.stop_release.set()
+    await abort_task
+    result = await play_task
+
+    assert abort_finished_before_release
+    assert not any(
+        kind == "json" and payload.get("state") == "stop"
+        for kind, payload, _ in websocket.events
+    )
     assert result.status == "aborted"
 
 
@@ -288,5 +447,20 @@ async def test_task3_pcm_stream_adapter_feeds_real_sender_as_raw_opus() -> None:
     decoder = opuslib_next.Decoder(16000, 1)
     try:
         assert all(len(decoder.decode(frame, 960)) == len(pcm_frame) for frame in opus_frames)
+    finally:
+        del decoder
+
+
+@pytest.mark.asyncio
+async def test_pcm_stream_adapter_pads_partial_final_chunk_into_valid_opus_frame() -> None:
+    async def chunks() -> AsyncIterator[TTSPcmChunk]:
+        yield TTSPcmChunk(pcm16_mono=b"\x01\x00" * 17, sample_rate=16000, is_final=True)
+
+    opus_frames = [frame async for frame in encode_pcm16_mono_chunks_to_opus_frames(chunks())]
+
+    assert len(opus_frames) == 1
+    decoder = opuslib_next.Decoder(16000, 1)
+    try:
+        assert len(decoder.decode(opus_frames[0], 960)) == 1920
     finally:
         del decoder
