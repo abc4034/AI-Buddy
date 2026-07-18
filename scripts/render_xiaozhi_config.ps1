@@ -173,6 +173,49 @@ function Assert-LiveAsrEnvironment {
   }
 }
 
+function Copy-UserTtsEnvironmentToProcess {
+  $names = @(
+    "TTS_PROVIDER",
+    "TTS_HTTP_URL",
+    "TTS_MODEL",
+    "TTS_API_KEY",
+    "TTS_VOICE",
+    "TTS_LANGUAGE",
+    "TTS_TIMEOUT_SECONDS"
+  )
+
+  foreach ($name in $names) {
+    if (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable($name, "Process"))) {
+      continue
+    }
+
+    $userValue = [System.Environment]::GetEnvironmentVariable($name, "User")
+    if (-not [string]::IsNullOrWhiteSpace($userValue)) {
+      [System.Environment]::SetEnvironmentVariable($name, $userValue, "Process")
+    }
+  }
+}
+
+function Assert-LiveTtsEnvironment {
+  $required = @("TTS_PROVIDER", "TTS_HTTP_URL", "TTS_MODEL", "TTS_API_KEY", "TTS_VOICE")
+  foreach ($name in $required) {
+    if ([string]::IsNullOrWhiteSpace((Get-ProcessThenUserEnvironmentValue -Name $name))) {
+      throw "TTS live mode requires TTS_PROVIDER, TTS_HTTP_URL, TTS_MODEL, TTS_API_KEY, TTS_VOICE, and a positive TTS_TIMEOUT_SECONDS."
+    }
+  }
+
+  $timeoutText = Get-ProcessThenUserEnvironmentValue -Name "TTS_TIMEOUT_SECONDS"
+  $timeout = 0.0
+  if (
+    -not [double]::TryParse($timeoutText, [ref]$timeout) -or
+    [double]::IsNaN($timeout) -or
+    [double]::IsInfinity($timeout) -or
+    $timeout -le 0
+  ) {
+    throw "TTS live mode requires TTS_PROVIDER, TTS_HTTP_URL, TTS_MODEL, TTS_API_KEY, TTS_VOICE, and a positive TTS_TIMEOUT_SECONDS."
+  }
+}
+
 function Get-RenderXiaoZhiConfigArguments {
   param(
     [string]$HostIp,
@@ -229,8 +272,10 @@ function Invoke-RenderXiaoZhiConfig {
     $HostIp = Assert-DemoHostIp -IpAddress $HostIp
   }
 
-  Assert-LiveAsrEnvironment
   $Output = Resolve-XiaoZhiConfigOutputPath -Output $Output
+  Assert-LiveAsrEnvironment
+  Copy-UserTtsEnvironmentToProcess
+  Assert-LiveTtsEnvironment
   $argsList = Get-RenderXiaoZhiConfigArguments -HostIp $HostIp -Output $Output
   Write-Host "Rendering XiaoZhi config for host IP $HostIp"
   & py @argsList

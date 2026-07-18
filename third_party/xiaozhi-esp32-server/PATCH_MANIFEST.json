@@ -97,6 +97,13 @@
       "path": "core/providers/llm/buddy_core/buddy_core.py",
       "reason": "Route a current user turn with immutable connection metadata to the local Buddy Core OpenAI-compatible endpoint.",
       "status": "added"
+    },
+    {
+      "current_sha256": "14f551b96f567568c370d6826e51bc9e77bab7ce4cf7079029de7893717d741c",
+      "original_sha256": null,
+      "path": "core/providers/tts/buddy_qwen_http.py",
+      "reason": "Add the configured Qwen HTTP TTS provider through the native flat loader while leaving upstream audio queueing, encoding, playback, and abort handling unchanged.",
+      "status": "added"
     }
   ],
   "schema_version": 1

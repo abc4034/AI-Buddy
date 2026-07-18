@@ -11,6 +11,7 @@
   "core/providers/llm/buddy_core/buddy_core.py": "Route a current user turn with immutable connection metadata to the local Buddy Core OpenAI-compatible endpoint.",
   "core/providers/asr/buddy_qwen.py": "Add the compatibility-authorized Qwen chat-completions ASR provider for the configured endpoint after native DashScope returned HTTP 404.",
   "core/providers/asr/qwen3_asr_flash.py": "Preserve native Qwen provider failures as typed outcomes and pass configured endpoint and timeout to the DashScope SDK compatibility gate.",
+  "core/providers/tts/buddy_qwen_http.py": "Add the configured Qwen HTTP TTS provider through the native flat loader while leaving upstream audio queueing, encoding, playback, and abort handling unchanged.",
   "app.py": "Revalidate the effective Buddy ownership contract before constructing either XiaoZhi listener.",
   "config/config_loader.py": "Validate Buddy local and merged configuration before remote selection, directory setup, or cache reuse."
 }

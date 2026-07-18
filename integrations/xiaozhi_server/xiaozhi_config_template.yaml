@@ -31,6 +31,7 @@ selected_module:
   Memory: nomem
   Intent: nointent
   ASR: BuddyQwenASR
+  TTS: BuddyQwenTTS
   VLLM: null
 
 LLM:
@@ -55,3 +56,13 @@ ASR:
     model_name: ${ASR_MODEL}
     base_url: ${ASR_HTTP_URL}
     timeout_seconds: ${ASR_TIMEOUT_SECONDS}
+
+TTS:
+  BuddyQwenTTS:
+    type: buddy_qwen_http
+    api_key: ${TTS_API_KEY}
+    api_url: ${TTS_HTTP_URL}
+    model: ${TTS_MODEL}
+    voice: ${TTS_VOICE}
+    language: ${TTS_LANGUAGE}
+    timeout_seconds: ${TTS_TIMEOUT_SECONDS}

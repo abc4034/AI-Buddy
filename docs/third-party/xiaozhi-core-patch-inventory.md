@@ -19,3 +19,7 @@ Task 5 Buddy Core ownership patches:
 - `buddy-neutral-prompt.txt` renders only the empty Buddy overlay prompt, while the ownership contract requires an empty `context_providers` list and fully disables voiceprint with the runtime-compatible boolean value.
 - `core/providers/llm/buddy_core/` forwards only the invocation's final user turn and immutable metadata to `http://127.0.0.1:8010/v1/chat/completions`.
 - `core/connection.py` registers/removes session identity, snapshots a top-level Buddy turn, and bypasses Unified Tool Handler and upstream manager title persistence; `core/handle/helloHandle.py` bypasses device MCP initialization only in Buddy mode.
+
+Task 6 Qwen TTS provider patch:
+
+- `core/providers/tts/buddy_qwen_http.py` is a flat-loader `TTSProvider` that performs only the verified DashScope synthesis request and inline/URL audio retrieval. XiaoZhi retains sentence queues, audio normalization, Opus framing, rate control, playback, abort, and connection-state handling.

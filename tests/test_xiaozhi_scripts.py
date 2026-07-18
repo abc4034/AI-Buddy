@@ -370,6 +370,8 @@ def test_render_script_preserves_manual_host_ip_and_repo_root():
             [
                 "& {",
                 "function global:py { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                "'TTS_PROVIDER','TTS_HTTP_URL','TTS_MODEL','TTS_API_KEY','TTS_VOICE','TTS_LANGUAGE' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, 'test-value', 'Process') }",
+                "[Environment]::SetEnvironmentVariable('TTS_TIMEOUT_SECONDS', '7.5', 'Process')",
                 f"& '{script_path}' -HostIp '192.168.0.101'",
                 "}",
             ]
@@ -460,6 +462,8 @@ def test_render_script_allows_custom_output_under_runtime_data():
             [
                 "& {",
                 "function global:py { param([Parameter(ValueFromRemainingArguments = $true)] $Args) $Args | ConvertTo-Json -Compress }",
+                "'TTS_PROVIDER','TTS_HTTP_URL','TTS_MODEL','TTS_API_KEY','TTS_VOICE','TTS_LANGUAGE' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, 'test-value', 'Process') }",
+                "[Environment]::SetEnvironmentVariable('TTS_TIMEOUT_SECONDS', '7.5', 'Process')",
                 f"& '{script_path}' -HostIp '192.168.2.9' -Output '{output}'",
                 "}",
             ]

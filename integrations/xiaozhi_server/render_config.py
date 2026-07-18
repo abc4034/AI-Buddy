@@ -22,6 +22,15 @@ ASR_ENVIRONMENT_NAMES = (
     "ASR_API_KEY",
     "ASR_TIMEOUT_SECONDS",
 )
+TTS_ENVIRONMENT_NAMES = (
+    "TTS_PROVIDER",
+    "TTS_HTTP_URL",
+    "TTS_MODEL",
+    "TTS_API_KEY",
+    "TTS_VOICE",
+    "TTS_LANGUAGE",
+    "TTS_TIMEOUT_SECONDS",
+)
 
 
 def validate_host_ip(host_ip: str) -> str:
@@ -87,6 +96,50 @@ def validate_asr_environment(environment: dict[str, str]) -> dict[str, str]:
     return validated
 
 
+def get_tts_environment(
+    *, process_environment: dict[str, str] | None = None, user_environment: dict[str, str] | None = None
+) -> dict[str, str]:
+    process_environment = process_environment if process_environment is not None else os.environ
+    if user_environment is None:
+        user_environment = {
+            name: os.environ.get(name, "")
+            for name in TTS_ENVIRONMENT_NAMES
+        }
+        if os.name == "nt":
+            import winreg
+
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                    for name in TTS_ENVIRONMENT_NAMES:
+                        try:
+                            user_environment[name] = winreg.QueryValueEx(key, name)[0]
+                        except FileNotFoundError:
+                            continue
+            except OSError:
+                pass
+
+    return {
+        name: str(process_environment.get(name) or user_environment.get(name) or "").strip()
+        for name in TTS_ENVIRONMENT_NAMES
+    }
+
+
+def validate_tts_environment(environment: dict[str, str]) -> dict[str, str]:
+    required = ("TTS_PROVIDER", "TTS_HTTP_URL", "TTS_MODEL", "TTS_API_KEY", "TTS_VOICE")
+    missing = [name for name in required if not environment.get(name)]
+    try:
+        timeout = float(environment.get("TTS_TIMEOUT_SECONDS", ""))
+    except ValueError:
+        timeout = 0
+    if missing or not math.isfinite(timeout) or timeout <= 0:
+        requirements = ", ".join((*required, "a positive TTS_TIMEOUT_SECONDS"))
+        raise ValueError(f"TTS live mode requires {requirements}.")
+
+    validated = dict(environment)
+    validated["TTS_TIMEOUT_SECONDS"] = format(timeout, "g")
+    return validated
+
+
 def render_config(
     host_ip: str,
     *,
@@ -100,10 +153,17 @@ def render_config(
             user_environment=user_environment,
         )
     )
+    tts_environment = validate_tts_environment(
+        get_tts_environment(
+            process_environment=process_environment,
+            user_environment=user_environment,
+        )
+    )
     template = Template(TEMPLATE_PATH.read_text(encoding="utf-8"))
     substitutions = {
         "HOST_IP": safe_ip,
         **{name: json.dumps(value) for name, value in asr_environment.items()},
+        **{name: json.dumps(value) for name, value in tts_environment.items()},
     }
     return template.substitute(substitutions)
 

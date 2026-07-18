@@ -10,8 +10,24 @@ from integrations.xiaozhi_server.render_config import (
 )
 
 
+LIVE_ENVIRONMENT = {
+    "ASR_PROVIDER": "qwen3_asr_flash",
+    "ASR_HTTP_URL": "https://asr.example.test/api/v1",
+    "ASR_MODEL": "qwen3-asr-flash-test",
+    "ASR_API_KEY": "test-asr-key-not-a-real-secret",
+    "ASR_TIMEOUT_SECONDS": "7.5",
+    "TTS_PROVIDER": "BuddyQwenTTS",
+    "TTS_HTTP_URL": "https://tts.example.test/api/v1",
+    "TTS_MODEL": "qwen3-tts-instruct-flash-test",
+    "TTS_API_KEY": "test-tts-key-not-a-real-secret",
+    "TTS_VOICE": "Cherry",
+    "TTS_LANGUAGE": "English",
+    "TTS_TIMEOUT_SECONDS": "7.5",
+}
+
+
 def test_render_config_uses_lan_ip_for_all_device_facing_urls():
-    rendered = render_config("192.168.2.9")
+    rendered = render_config("192.168.2.9", process_environment=LIVE_ENVIRONMENT, user_environment={})
 
     assert "websocket: ws://192.168.2.9:8000/xiaozhi/v1/" in rendered
     assert "vision_explain: http://192.168.2.9:8003/mcp/vision/explain" in rendered
@@ -33,7 +49,13 @@ def test_write_config_creates_parent_directories(tmp_path):
     repo_root = tmp_path / "repo"
     output = repo_root / "xiaozhi_server" / "data" / ".config.yaml"
 
-    written = write_config("192.168.2.9", output, repo_root=repo_root)
+    written = write_config(
+        "192.168.2.9",
+        output,
+        repo_root=repo_root,
+        process_environment=LIVE_ENVIRONMENT,
+        user_environment={},
+    )
 
     assert written == output
     assert output.exists()
