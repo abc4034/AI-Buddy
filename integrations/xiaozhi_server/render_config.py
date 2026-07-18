@@ -40,7 +40,7 @@ def render_config(host_ip: str) -> str:
 
 
 def default_output_path(repo_root: Path) -> Path:
-    return repo_root / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
+    return repo_root / "xiaozhi_server" / "data" / ".config.yaml"
 
 
 def allowed_output_dir(repo_root: Path) -> Path:
@@ -87,7 +87,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=None,
-        help="Output .config.yaml path. Defaults to .run/xiaozhi-esp32-server/main/xiaozhi-server/data/.config.yaml.",
+        help="Output .config.yaml path. Defaults to xiaozhi_server/data/.config.yaml.",
     )
     args = parser.parse_args()
 

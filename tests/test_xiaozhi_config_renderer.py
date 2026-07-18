@@ -15,14 +15,11 @@ def test_render_config_uses_lan_ip_for_all_device_facing_urls():
 
     assert "websocket: ws://192.168.2.9:8000/xiaozhi/v1/" in rendered
     assert "vision_explain: http://192.168.2.9:8003/mcp/vision/explain" in rendered
-    assert "base_url: http://192.168.2.9:8010/v1" in rendered
-    assert "type: openai" in rendered
-    assert "model_name: deepseek-v4-flash" in rendered
-    assert "LLM: BuddyCoreLLM" in rendered
-    assert "forward_device_metadata: true" in rendered
+    assert "LLM: ChatGLMLLM" in rendered
     assert "Memory: nomem" in rendered
     assert "Intent: nointent" in rendered
-    assert "api_key: local" in rendered
+    assert "BuddyCoreLLM" not in rendered
+    assert ":8010/" not in rendered
     assert "${HOST_IP}" not in rendered
 
 
@@ -34,13 +31,13 @@ def test_render_config_rejects_unusable_device_ip(bad_ip):
 
 def test_write_config_creates_parent_directories(tmp_path):
     repo_root = tmp_path / "repo"
-    output = repo_root / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
+    output = repo_root / "xiaozhi_server" / "data" / ".config.yaml"
 
     written = write_config("192.168.2.9", output, repo_root=repo_root)
 
     assert written == output
     assert output.exists()
-    assert "BuddyCoreLLM" in output.read_text(encoding="utf-8")
+    assert "ChatGLMLLM" in output.read_text(encoding="utf-8")
 
 
 def test_default_output_path_points_to_xiaozhi_runtime_data():
@@ -48,7 +45,8 @@ def test_default_output_path_points_to_xiaozhi_runtime_data():
 
     path = default_output_path(repo_root)
 
-    assert path.as_posix().endswith(".run/xiaozhi-esp32-server/main/xiaozhi-server/data/.config.yaml")
+    assert path.as_posix().endswith("xiaozhi_server/data/.config.yaml")
+    assert ".run" not in path.parts
 
 
 def test_resolve_output_path_rejects_paths_outside_xiaozhi_runtime_data(tmp_path):
@@ -61,7 +59,7 @@ def test_resolve_output_path_rejects_paths_outside_xiaozhi_runtime_data(tmp_path
 
 def test_resolve_output_path_allows_custom_path_under_xiaozhi_runtime_data(tmp_path):
     repo_root = tmp_path / "repo"
-    output = repo_root / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "custom.config.yaml"
+    output = repo_root / "xiaozhi_server" / "data" / "custom.config.yaml"
 
     resolved = resolve_output_path(repo_root, output)
 
@@ -70,7 +68,7 @@ def test_resolve_output_path_allows_custom_path_under_xiaozhi_runtime_data(tmp_p
 
 def test_resolve_output_path_resolves_relative_output_from_repo_root(tmp_path):
     repo_root = tmp_path / "repo"
-    output = Path(".run") / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "custom.config.yaml"
+    output = Path("xiaozhi_server") / "data" / "custom.config.yaml"
 
     resolved = resolve_output_path(repo_root, output)
 

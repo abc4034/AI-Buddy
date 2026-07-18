@@ -17,6 +17,7 @@ SCRIPTS = [
     "backup_v05_runtime.ps1",
     "check_local_demo_status.ps1",
     "render_xiaozhi_config.ps1",
+    "check_xiaozhi_dependencies.ps1",
     "setup_xiaozhi_server.ps1",
     "start_buddy_core.ps1",
     "start_buddy_gateway.ps1",
@@ -424,13 +425,13 @@ def test_render_script_rejects_output_outside_runtime_before_calling_py(tmp_path
 
     assert result.returncode != 0
     combined = combined_output(result).lower()
-    assert ".run" in combined
+    assert "xiaozhi_server" in combined
     assert "py should not be called" not in combined
 
 
 def test_render_script_allows_custom_output_under_runtime_data():
     script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
-    output = REPO_ROOT / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "custom.config.yaml"
+    output = REPO_ROOT / "xiaozhi_server" / "data" / "custom.config.yaml"
 
     result = run_powershell(
         "\n".join(
@@ -445,12 +446,12 @@ def test_render_script_allows_custom_output_under_runtime_data():
     args = json.loads(result.stdout.splitlines()[-1])
 
     output_arg = args[args.index("--output") + 1]
-    assert output_arg.endswith("\\.run\\xiaozhi-esp32-server\\main\\xiaozhi-server\\data\\custom.config.yaml")
+    assert output_arg.endswith("\\xiaozhi_server\\data\\custom.config.yaml")
 
 
 def test_render_script_rejects_nested_output_under_runtime_data_before_calling_py():
     script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
-    output = REPO_ROOT / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / "nested" / "custom.config.yaml"
+    output = REPO_ROOT / "xiaozhi_server" / "data" / "nested" / "custom.config.yaml"
 
     result = run_powershell(
         "\n".join(
@@ -466,7 +467,7 @@ def test_render_script_rejects_nested_output_under_runtime_data_before_calling_p
 
     assert result.returncode != 0
     combined = combined_output(result).lower()
-    assert ".run" in combined
+    assert "xiaozhi_server" in combined
     assert "py should not be called" not in combined
 
 
@@ -2410,61 +2411,53 @@ def test_check_local_demo_status_reports_ports_config_and_runtime_patch(tmp_path
 def test_start_xiaozhi_script_uses_conda_environment():
     text = (SCRIPTS_DIR / "start_xiaozhi_server.ps1").read_text(encoding="utf-8")
 
-    assert "conda run" in text
+    assert "conda run --no-capture-output" in text
     assert 'CondaEnv = "xiaozhi-env"' in text
-    assert "python app.py" in text
+    assert "python $appPath" in text
 
 
 def test_start_xiaozhi_script_resolves_default_server_dir_from_repo_root():
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
 
     result = run_powershell(
-        f"& {{ . '{script_path}'; Get-ResolvedXiaoZhiServerDir -ServerDir '.run\\xiaozhi-esp32-server\\main\\xiaozhi-server' }}",
+        f"& {{ . '{script_path}'; Get-ResolvedXiaoZhiServerDir -ServerDir 'xiaozhi_server' }}",
         cwd=REPO_ROOT.parent,
     )
 
-    expected = REPO_ROOT / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server"
+    expected = REPO_ROOT / "xiaozhi_server"
     assert Path(result.stdout.strip()) == expected
 
 
-def test_start_xiaozhi_script_preflight_fails_when_app_py_missing():
+def test_start_xiaozhi_script_preflight_requires_app_core_config_and_local_config(tmp_path: Path):
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
-    runtime_root = REPO_ROOT / ".run" / f"pytest-missing-app-{uuid.uuid4().hex}"
-    server_dir = runtime_root / "main" / "xiaozhi-server"
+    server_dir = tmp_path / "xiaozhi-server"
     (server_dir / "data").mkdir(parents=True)
     (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
 
-    try:
-        result = run_powershell(
-            f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
-            check=False,
-        )
-    finally:
-        if runtime_root.exists():
-            shutil.rmtree(runtime_root)
+    result = run_powershell(
+        f"& {{ . '{script_path}'; Assert-XiaoZhiServerPreflight -ResolvedServerDir '{server_dir}' }}",
+        check=False,
+    )
 
     assert result.returncode != 0
     assert "app.py" in combined_output(result)
 
 
-def test_start_xiaozhi_script_preflight_fails_when_config_missing():
+def test_start_xiaozhi_script_preflight_requires_core_directory(tmp_path: Path):
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
-    runtime_root = REPO_ROOT / ".run" / f"pytest-missing-config-{uuid.uuid4().hex}"
-    server_dir = runtime_root / "main" / "xiaozhi-server"
+    server_dir = tmp_path / "xiaozhi-server"
     (server_dir / "data").mkdir(parents=True)
     (server_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    (server_dir / "config").mkdir()
+    (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
 
-    try:
-        result = run_powershell(
-            f"& {{ . '{script_path}'; Invoke-StartXiaoZhiServer -ServerDir '{server_dir}' }}",
-            check=False,
-        )
-    finally:
-        if runtime_root.exists():
-            shutil.rmtree(runtime_root)
+    result = run_powershell(
+        f"& {{ . '{script_path}'; Assert-XiaoZhiServerPreflight -ResolvedServerDir '{server_dir}' }}",
+        check=False,
+    )
 
     assert result.returncode != 0
-    assert ".config.yaml" in combined_output(result)
+    assert "core" in combined_output(result).lower()
 
 
 def test_start_xiaozhi_script_rejects_server_dir_outside_runtime_before_calling_conda(tmp_path: Path):
@@ -2489,17 +2482,17 @@ def test_start_xiaozhi_script_rejects_server_dir_outside_runtime_before_calling_
 
     assert result.returncode != 0
     combined = combined_output(result).lower()
-    assert ".run" in combined
+    assert "xiaozhi_server" in combined
     assert "conda should not be called" not in combined
 
 
 def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir():
     script_path = SCRIPTS_DIR / "start_xiaozhi_server.ps1"
-    runtime_root = REPO_ROOT / ".run" / f"pytest-start-{uuid.uuid4().hex}"
-    server_dir = runtime_root / "main" / "xiaozhi-server"
-    (server_dir / "data").mkdir(parents=True)
-    (server_dir / "app.py").write_text("print('ok')\n", encoding="utf-8")
-    (server_dir / "data" / ".config.yaml").write_text("demo: true\n", encoding="utf-8")
+    server_dir = REPO_ROOT / "xiaozhi_server"
+    config_path = server_dir / "data" / ".config.yaml"
+    original = config_path.read_bytes() if config_path.exists() else None
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("server: {}\n", encoding="utf-8")
 
     try:
         result = run_powershell(
@@ -2521,8 +2514,10 @@ def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir():
         )
         payload = json.loads(result.stdout.splitlines()[-1])
     finally:
-        if runtime_root.exists():
-            shutil.rmtree(runtime_root)
+        if original is None:
+            config_path.unlink(missing_ok=True)
+        else:
+            config_path.write_bytes(original)
 
     assert [str(arg) for arg in payload["Args"]] == [
         "run",
@@ -2530,6 +2525,42 @@ def test_start_xiaozhi_script_invokes_conda_from_resolved_server_dir():
         "-n",
         "xiaozhi-env",
         "python",
-        "app.py",
+        str(server_dir / "app.py"),
     ]
-    assert payload["Location"].endswith("\\.run\\" + runtime_root.name + "\\main\\xiaozhi-server")
+    assert Path(payload["Location"]) == server_dir
+    assert "WebSocket endpoint: ws://<LAN-IP>:8000/xiaozhi/v1/" in result.stdout
+    assert "OTA endpoint: http://<LAN-IP>:8003/xiaozhi/ota/" in result.stdout
+
+
+def test_dependency_checker_prints_repair_command_without_installing_on_failure():
+    script_path = SCRIPTS_DIR / "check_xiaozhi_dependencies.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                "function global:conda { throw 'simulated pip check failure' }",
+                f". '{script_path}'",
+                "Invoke-CheckXiaoZhiDependencies",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    combined = combined_output(result)
+    assert result.returncode != 0
+    assert "conda run -n xiaozhi-env python -m pip install -r .\\xiaozhi_server\\requirements.txt" in combined
+    assert "pip install -r" not in combined.replace(
+        "conda run -n xiaozhi-env python -m pip install -r .\\xiaozhi_server\\requirements.txt", ""
+    )
+
+
+def test_dependency_checker_checks_and_imports_native_selected_modules():
+    text = (SCRIPTS_DIR / "check_xiaozhi_dependencies.ps1").read_text(encoding="utf-8")
+
+    assert "python -m pip check" in text
+    assert "python -B -c" in text
+    assert "core.providers.asr.fun_local" in text
+    assert "core.providers.llm.openai.openai" in text
+    assert "core.providers.tts.edge" in text

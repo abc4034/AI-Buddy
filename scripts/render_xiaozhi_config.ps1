@@ -169,7 +169,7 @@ function Resolve-XiaoZhiConfigOutputPath {
   param([string]$Output)
 
   $repoRoot = Get-RepoRoot
-  $allowedDataDir = Resolve-RepoPath -Path ".run\xiaozhi-esp32-server\main\xiaozhi-server\data" -RepoRoot $repoRoot
+  $allowedDataDir = Resolve-RepoPath -Path "xiaozhi_server\data" -RepoRoot $repoRoot
 
   if ([string]::IsNullOrWhiteSpace($Output)) {
     return ""

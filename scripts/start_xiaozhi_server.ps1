@@ -1,5 +1,5 @@
 param(
-  [string]$ServerDir = ".run\xiaozhi-esp32-server\main\xiaozhi-server",
+  [string]$ServerDir = "xiaozhi_server",
   [string]$CondaEnv = "xiaozhi-env"
 )
 
@@ -42,20 +42,15 @@ function Get-ResolvedXiaoZhiServerDir {
   param([string]$ServerDir)
 
   $repoRoot = Get-RepoRoot
-  $runRoot = Resolve-RepoPath -Path ".run" -RepoRoot $repoRoot
-  $defaultServerDir = Resolve-RepoPath -Path ".run\xiaozhi-esp32-server\main\xiaozhi-server" -RepoRoot $repoRoot
+  $defaultServerDir = Resolve-RepoPath -Path "xiaozhi_server" -RepoRoot $repoRoot
   $resolvedServerDir = Resolve-RepoPath -Path $ServerDir -RepoRoot $repoRoot
 
-  if (-not (Test-IsChildOrSameDirectory -Path $resolvedServerDir -ParentDirectory $runRoot)) {
-    throw "ServerDir must resolve under $runRoot"
+  if (-not (Test-IsChildOrSameDirectory -Path $resolvedServerDir -ParentDirectory $defaultServerDir)) {
+    throw "ServerDir must resolve under $defaultServerDir"
   }
 
-  if ($resolvedServerDir.Equals($runRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "ServerDir must resolve to a server directory under $runRoot"
-  }
-
-  if ($resolvedServerDir.Equals($defaultServerDir, [System.StringComparison]::OrdinalIgnoreCase)) {
-    return $resolvedServerDir
+  if (-not $resolvedServerDir.Equals($defaultServerDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "ServerDir must resolve to the vendored runtime $defaultServerDir"
   }
 
   return $resolvedServerDir
@@ -65,7 +60,15 @@ function Assert-XiaoZhiServerPreflight {
   param([string]$ResolvedServerDir)
 
   if (-not (Test-Path (Join-Path $ResolvedServerDir "app.py"))) {
-    throw "XiaoZhi server app.py not found. Run .\scripts\setup_xiaozhi_server.ps1 first."
+    throw "XiaoZhi server app.py not found under $ResolvedServerDir."
+  }
+
+  if (-not (Test-Path (Join-Path $ResolvedServerDir "core") -PathType Container)) {
+    throw "XiaoZhi server core directory not found under $ResolvedServerDir."
+  }
+
+  if (-not (Test-Path (Join-Path $ResolvedServerDir "config") -PathType Container)) {
+    throw "XiaoZhi server config directory not found under $ResolvedServerDir."
   }
 
   if (-not (Test-Path (Join-Path $ResolvedServerDir "data\.config.yaml"))) {
@@ -81,11 +84,14 @@ function Invoke-StartXiaoZhiServer {
 
   $resolvedServerDir = Get-ResolvedXiaoZhiServerDir -ServerDir $ServerDir
   Assert-XiaoZhiServerPreflight -ResolvedServerDir $resolvedServerDir
+  $appPath = [System.IO.Path]::GetFullPath((Join-Path $resolvedServerDir "app.py"))
 
   Write-Host "Starting XiaoZhi server from $resolvedServerDir with conda env $CondaEnv"
+  Write-Host "WebSocket endpoint: ws://<LAN-IP>:8000/xiaozhi/v1/"
+  Write-Host "OTA endpoint: http://<LAN-IP>:8003/xiaozhi/ota/"
   Push-Location $resolvedServerDir
   try {
-    & conda run --no-capture-output -n $CondaEnv python app.py
+    & conda run --no-capture-output -n $CondaEnv python $appPath
   }
   finally {
     Pop-Location
