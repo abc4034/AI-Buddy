@@ -18,7 +18,7 @@ function Get-SensitiveAssignmentValues {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
 
   $sensitiveNamePattern = '(?:API_' + 'KEY|API_' + 'TOKEN|ACCESS_' + 'TOKEN|AUTH_' + 'TOKEN|SECRET|TOKEN|KEY)'
-  $pattern = '(?i)(?:^|[\s{,])[''"]?[A-Z][A-Z0-9_.-]*' + $sensitiveNamePattern + '[A-Z0-9_.-]*[''"]?\s*(?:=|:)\s*("[^"]*"|''[^'']*''|[^\s,#}]+)'
+  $pattern = '(?i)(?:^|[\s{,;])(?:\$env:)?[''"]?[A-Z][A-Z0-9_.-]*' + $sensitiveNamePattern + '[A-Z0-9_.-]*[''"]?\s*(?:=|:)\s*("[^"]*"|''[^'']*''|[^\s,;#}]+)'
   $values = @()
   foreach ($match in [regex]::Matches($Line, $pattern)) {
     $values += $match.Groups[1].Value

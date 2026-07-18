@@ -53,6 +53,20 @@ function Resolve-V05ChildPath {
   $candidate
 }
 
+function Test-V05PathsOverlap {
+  param(
+    [Parameter(Mandatory = $true)][string]$First,
+    [Parameter(Mandatory = $true)][string]$Second
+  )
+
+  $firstPath = [System.IO.Path]::GetFullPath($First).TrimEnd([char[]]@('\', '/'))
+  $secondPath = [System.IO.Path]::GetFullPath($Second).TrimEnd([char[]]@('\', '/'))
+  $separator = [System.IO.Path]::DirectorySeparatorChar
+  return $firstPath.Equals($secondPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $firstPath.StartsWith($secondPath + $separator, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $secondPath.StartsWith($firstPath + $separator, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Assert-V05NoDestinationReparsePoint {
   param(
     [Parameter(Mandatory = $true)][string]$RepositoryRoot,
@@ -85,6 +99,41 @@ function Assert-V05NoDestinationReparsePoint {
   }
 }
 
+function Resolve-V05ApprovedBackupRoot {
+  param(
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+    [Parameter(Mandatory = $true)][string]$BackupRoot
+  )
+
+  $repositoryPath = [System.IO.Path]::GetFullPath($RepositoryRoot)
+  $approvedRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryPath "tmp/v05-runtime-backup")).TrimEnd([char[]]@('\', '/'))
+  $candidate = if ([System.IO.Path]::IsPathRooted($BackupRoot)) {
+    [System.IO.Path]::GetFullPath($BackupRoot)
+  }
+  else {
+    [System.IO.Path]::GetFullPath((Join-Path $repositoryPath $BackupRoot))
+  }
+  $candidate = $candidate.TrimEnd([char[]]@('\', '/'))
+  $approvedPrefix = $approvedRoot + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $candidate.Equals($approvedRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
+      -not $candidate.StartsWith($approvedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Backup root must be within the approved ignored runtime backup tree."
+  }
+
+  $sourcePaths = @(
+    (Join-Path $repositoryPath ".env"),
+    (Join-Path $repositoryPath $script:XiaoZhiConfigRelativePath),
+    (Join-Path $repositoryPath $script:GatewayAudioRelativeRoot)
+  )
+  foreach ($sourcePath in $sourcePaths) {
+    if (Test-V05PathsOverlap -First $candidate -Second $sourcePath) {
+      throw "Backup root overlaps a runtime source path."
+    }
+  }
+  Assert-V05NoDestinationReparsePoint -RepositoryRoot $repositoryPath -Destination $candidate
+  $candidate
+}
+
 function Assert-V05RegularFileDestination {
   param([Parameter(Mandatory = $true)][string]$Destination)
 
@@ -104,6 +153,20 @@ function Write-V05Utf8Json {
 
   $json = $Value | ConvertTo-Json -Depth 8
   [System.IO.File]::WriteAllText($Path, $json, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Read-V05JsonFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$InvalidMessage
+  )
+
+  try {
+    Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop
+  }
+  catch {
+    throw $InvalidMessage
+  }
 }
 
 function Get-V05EnvironmentSnapshot {
@@ -195,7 +258,7 @@ function New-V05RuntimeBackup {
   if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
     $BackupRoot = Join-Path $repositoryRoot "tmp/v05-runtime-backup"
   }
-  $backupRootPath = [System.IO.Path]::GetFullPath($BackupRoot)
+  $backupRootPath = Resolve-V05ApprovedBackupRoot -RepositoryRoot $repositoryRoot -BackupRoot $BackupRoot
   $backupDir = Join-Path $backupRootPath ((Get-Date -Format "yyyyMMdd-HHmmssfff") + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
   New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 
@@ -278,7 +341,7 @@ function Get-V05ManifestRestorePlan {
   if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw "Backup manifest is missing."
   }
-  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $manifest = Read-V05JsonFile -Path $manifestPath -InvalidMessage "Backup manifest is not valid JSON."
   if ([string]$manifest.source_commit -ne $script:V05SourceCommit) {
     throw "Backup manifest source commit does not identify the v0.5 baseline."
   }
@@ -321,7 +384,7 @@ function Get-V05ManifestRestorePlan {
     throw "Backup environment file is missing or invalid."
   }
 
-  $environment = Get-Content -LiteralPath $environmentPath -Raw | ConvertFrom-Json
+  $environment = Read-V05JsonFile -Path $environmentPath -InvalidMessage "Backup environment data is not valid JSON."
   foreach ($scope in @("process", "user")) {
     if ($null -eq $environment.$scope) {
       throw "Backup environment data is incomplete."
@@ -395,7 +458,11 @@ function Restore-V05FileState {
   New-Item -ItemType Directory -Force -Path $parent | Out-Null
   $temporary = Join-Path $parent ("." + [System.IO.Path]::GetFileName($State.Destination) + ".v05-recovery-" + [guid]::NewGuid().ToString("N") + ".tmp")
   try {
+    Assert-V05NoDestinationReparsePoint -RepositoryRoot $RepositoryRoot -Destination $State.Destination
+    Assert-V05RegularFileDestination -Destination $State.Destination
     Copy-Item -LiteralPath $State.SnapshotPath -Destination $temporary -Force
+    Assert-V05NoDestinationReparsePoint -RepositoryRoot $RepositoryRoot -Destination $State.Destination
+    Assert-V05RegularFileDestination -Destination $State.Destination
     Move-Item -LiteralPath $temporary -Destination $State.Destination -Force
   }
   finally {
@@ -403,6 +470,10 @@ function Restore-V05FileState {
       Remove-Item -LiteralPath $temporary -Force
     }
   }
+}
+
+function Invoke-V05BeforeRestoreWrite {
+  param([Parameter(Mandatory = $true)][object]$Plan)
 }
 
 function Restore-V05RuntimeBackup {
@@ -438,10 +509,13 @@ function Restore-V05RuntimeBackup {
   $temporaryFiles = @()
   $appliedStates = @()
   try {
+    Invoke-V05BeforeRestoreWrite -Plan $plan
     foreach ($action in $plan.FileActions) {
       $parent = Split-Path -Parent $action.Destination
       New-Item -ItemType Directory -Force -Path $parent | Out-Null
       $temporary = Join-Path $parent ("." + [System.IO.Path]::GetFileName($action.Destination) + ".v05-restore-" + [guid]::NewGuid().ToString("N") + ".tmp")
+      Assert-V05NoDestinationReparsePoint -RepositoryRoot $repositoryRoot -Destination $action.Destination
+      Assert-V05RegularFileDestination -Destination $action.Destination
       Copy-Item -LiteralPath $action.Source -Destination $temporary -Force
       $temporaryFiles += [pscustomobject]@{
         Temporary = $temporary
@@ -451,6 +525,8 @@ function Restore-V05RuntimeBackup {
     }
 
     foreach ($temporaryFile in $temporaryFiles) {
+      Assert-V05NoDestinationReparsePoint -RepositoryRoot $repositoryRoot -Destination $temporaryFile.Destination
+      Assert-V05RegularFileDestination -Destination $temporaryFile.Destination
       Move-Item -LiteralPath $temporaryFile.Temporary -Destination $temporaryFile.Destination -Force
       $appliedStates += $temporaryFile.State
     }
