@@ -27,19 +27,19 @@ The WebSocket URL is `ws://<host-lan-ip>:8000/xiaozhi/v1/`.
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_local_demo_status.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_xiaozhi_fusion.ps1
-conda run -n xiaozhi-env python -m pytest tests/xiaozhi_fusion/test_voice_loop.py -q
 ```
 
 Useful endpoints are `http://127.0.0.1:8010/health`, `http://127.0.0.1:8003/health`, `http://127.0.0.1:8003/debug/sessions`, `http://127.0.0.1:8003/debug/asr/providers`, and `http://127.0.0.1:8003/debug/tts/providers`.
 
-For a production software voice loop after the fused runtime is running, set the non-secret test switch in the current shell and run the focused test:
+`check_local_demo_status.ps1` reports runtime state as `owned`, `mismatch`, `unmanaged`, `invalid`, or `stopped`. An open port is not considered owned unless its current listener PID, conda environment, absolute app identity, and command marker match `tmp/runtime/buddy-fusion.json`.
+
+The smoke command runs a new same-socket software voice loop with a unique device ID. It replays a verified hardware Opus capture, decodes the returned nonempty Opus frames, checks optional `stt` before `tts start`, then `tts sentence_start`, binary audio, and `tts stop`, and verifies the matching Buddy Memory episode. By default it selects the newest nonempty capture under `data/gateway_audio`; choose one explicitly when needed:
 
 ```powershell
-$env:RUN_XIAOZHI_VOICE_LOOP = "1"
-conda run -n xiaozhi-env python -m pytest tests/xiaozhi_fusion/test_voice_loop.py -q
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke_xiaozhi_fusion.ps1 -OpusDirectory .\data\gateway_audio\<verified-session>
 ```
 
-It sends `hello`, manual `listen`, valid Opus input, and checks `stt` (when emitted), `tts start`, `tts sentence_start`, binary Opus, and `tts stop` on one socket. It also checks that Buddy Memory contains the device and one episode.
+The capture is local test input and remains ignored; do not commit recorded child audio.
 
 Hardware acceptance requires the same sequence on the ESP32 with audible returned Opus audio, correct device identity in Buddy Memory, and no v0.5 Gateway process listening on `8000` or `8003`.
 
@@ -49,7 +49,7 @@ Hardware acceptance requires the same sequence on the ESP32 with audible returne
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop_local_demo.ps1
 ```
 
-The stop command relies on the owned `tmp/runtime/buddy-fusion.json` state file. It validates listener identity, stops XiaoZhi first, verifies `8000/8003` have released, then stops Buddy Core. It refuses unknown owners instead of killing an existing user service.
+The launcher writes `tmp/runtime/buddy-fusion.json` atomically. If startup fails, it rolls back only wrappers it started and listeners whose ownership it already validated. The stop command re-resolves every recorded port and requires the live listener PID to match the state before it validates identity, stops XiaoZhi, verifies `8000/8003` have released, and then stops Buddy Core. It retains state and refuses stale or unknown owners instead of killing an existing user service.
 
 Rollback remains the v0.5 backup workflow:
 

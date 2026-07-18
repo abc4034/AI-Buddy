@@ -66,6 +66,84 @@ function Get-FusionProvenanceState {
   }
 }
 
+. (Join-Path $PSScriptRoot "fusion_process_helpers.ps1")
+
+function Resolve-FusionStatusRuntimePath {
+  param([string]$RuntimeStatePath = "")
+
+  $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+  if ([string]::IsNullOrWhiteSpace($RuntimeStatePath)) {
+    return Join-Path $repoRoot "tmp\runtime\buddy-fusion.json"
+  }
+  if ([System.IO.Path]::IsPathRooted($RuntimeStatePath)) {
+    return [System.IO.Path]::GetFullPath($RuntimeStatePath)
+  }
+  return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $RuntimeStatePath))
+}
+
+function Test-FusionServiceOwnership {
+  param(
+    [object]$Service,
+    [string]$CondaEnv = "xiaozhi-env"
+  )
+
+  try {
+    $ports = @($Service.Ports | ForEach-Object { [int]$_ })
+    $currentPid = Resolve-FusionPortOwnerPid -Ports $ports
+    return (
+      $currentPid -eq [int]$Service.ListenerPid -and
+      (Test-FusionProcessIdentity -ProcessId $currentPid -ExpectedIdentity ([string]$Service.ExpectedIdentity) -ExpectedCommandMarker ([string]$Service.ExpectedCommandMarker) -ExpectedCommandRoot ([string]$Service.ExpectedCommandRoot) -CondaEnv $CondaEnv)
+    )
+  }
+  catch {
+    return $false
+  }
+}
+
+function Get-FusionRuntimeStateStatus {
+  param(
+    [string]$RuntimeStatePath = "",
+    [string]$CondaEnv = "xiaozhi-env"
+  )
+
+  $path = Resolve-FusionStatusRuntimePath -RuntimeStatePath $RuntimeStatePath
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    $anyListening = @(@(8000, 8003, 8010) | Where-Object { Test-ListeningPort -Port $_ }).Count -gt 0
+    return [pscustomobject]@{
+      Path = $path
+      Exists = $false
+      Status = if ($anyListening) { "unmanaged" } else { "stopped" }
+      BuddyCoreOwned = $false
+      XiaoZhiOwned = $false
+    }
+  }
+
+  try {
+    $state = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if ([int]$state.SchemaVersion -ne 2 -or $null -eq $state.BuddyCore -or $null -eq $state.XiaoZhi) {
+      throw "incomplete state"
+    }
+    $buddyOwned = Test-FusionServiceOwnership -Service $state.BuddyCore -CondaEnv $CondaEnv
+    $xiaozhiOwned = Test-FusionServiceOwnership -Service $state.XiaoZhi -CondaEnv $CondaEnv
+    return [pscustomobject]@{
+      Path = $path
+      Exists = $true
+      Status = if ($buddyOwned -and $xiaozhiOwned) { "owned" } else { "mismatch" }
+      BuddyCoreOwned = $buddyOwned
+      XiaoZhiOwned = $xiaozhiOwned
+    }
+  }
+  catch {
+    return [pscustomobject]@{
+      Path = $path
+      Exists = $true
+      Status = "invalid"
+      BuddyCoreOwned = $false
+      XiaoZhiOwned = $false
+    }
+  }
+}
+
 function Invoke-CheckLocalDemoStatus {
   param(
     [string]$ConfigPath = "xiaozhi_server\data\.config.yaml",
@@ -112,6 +190,7 @@ function Invoke-CheckLocalDemoStatus {
         (Test-ConfigFlag -Text $connectionText -Pattern "client-id")
       )
     }
+    RuntimeState = Get-FusionRuntimeStateStatus -RuntimeStatePath $RuntimeStatePath
     Provenance = Get-FusionProvenanceState
     RecentSessions = Get-RecentFusionSessions
   }

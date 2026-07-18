@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -40,7 +41,7 @@ def wait_for_ports(expected: bool, timeout: float = 20) -> bool:
     return False
 
 
-@pytest.mark.skipif(not hasattr(socket, "AF_INET"), reason="requires Windows TCP listeners")
+@pytest.mark.skipif(sys.platform != "win32", reason="requires Windows process ownership APIs")
 def test_production_helpers_discover_and_stop_a_conda_listener_child(tmp_path: Path):
     fixture = tmp_path / "listener_fixture.py"
     fixture.write_text(

@@ -53,7 +53,7 @@ function Invoke-RenderFusionConfig {
   param([string]$AdvertiseHost)
 
   $renderer = Join-Path $PSScriptRoot "render_xiaozhi_config.ps1"
-  & $renderer -HostIp $AdvertiseHost
+  $null = & $renderer -HostIp $AdvertiseHost
 }
 
 function ConvertTo-FusionArgumentText {
@@ -172,23 +172,43 @@ function Resolve-ServiceListenerPid {
   return $listenerProcessId
 }
 
+. (Join-Path $PSScriptRoot "fusion_process_helpers.ps1")
+
 function Write-FusionRuntimeState {
   param(
     [string]$RuntimeStatePath,
     [int]$BuddyListenerPid,
     [int]$BuddyWrapperPid,
     [string]$BuddyIdentity,
+    [string]$BuddyCommandMarker,
+    [string]$BuddyCommandRoot,
     [int]$XiaoZhiListenerPid,
     [int]$XiaoZhiWrapperPid,
-    [string]$XiaoZhiIdentity
+    [string]$XiaoZhiIdentity,
+    [string]$XiaoZhiCommandMarker,
+    [string]$XiaoZhiCommandRoot
   )
 
-  $directory = Split-Path -Parent $RuntimeStatePath
-  New-Item -ItemType Directory -Force -Path $directory | Out-Null
-  [pscustomobject]@{
-    BuddyCore = [pscustomobject]@{ ListenerPid = $BuddyListenerPid; WrapperPid = $BuddyWrapperPid; ExpectedIdentity = $BuddyIdentity; Ports = @(8010) }
-    XiaoZhi = [pscustomobject]@{ ListenerPid = $XiaoZhiListenerPid; WrapperPid = $XiaoZhiWrapperPid; ExpectedIdentity = $XiaoZhiIdentity; Ports = @(8000, 8003) }
-  } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $RuntimeStatePath -Encoding utf8
+  $state = [pscustomobject]@{
+    SchemaVersion = 2
+    BuddyCore = [pscustomobject]@{
+      ListenerPid = $BuddyListenerPid
+      WrapperPid = $BuddyWrapperPid
+      ExpectedIdentity = $BuddyIdentity
+      ExpectedCommandMarker = $BuddyCommandMarker
+      ExpectedCommandRoot = $BuddyCommandRoot
+      Ports = @(8010)
+    }
+    XiaoZhi = [pscustomobject]@{
+      ListenerPid = $XiaoZhiListenerPid
+      WrapperPid = $XiaoZhiWrapperPid
+      ExpectedIdentity = $XiaoZhiIdentity
+      ExpectedCommandMarker = $XiaoZhiCommandMarker
+      ExpectedCommandRoot = $XiaoZhiCommandRoot
+      Ports = @(8000, 8003)
+    }
+  }
+  Write-FusionJsonAtomic -Path $RuntimeStatePath -Value $state
 }
 
 function Invoke-StartBuddyFusion {
@@ -202,31 +222,71 @@ function Invoke-StartBuddyFusion {
   $repoRoot = Get-FusionRepoRoot
   $serverRoot = Resolve-FusionPath -Path $ServerDir
   $xiaozhiApp = Join-Path $serverRoot "app.py"
-  $buddyIdentity = $repoRoot
+  $buddyIdentity = Join-Path $repoRoot "buddy_brain\app.py"
+  $buddyCommandMarker = "buddy_brain.app:app"
+  $buddyCommandRoot = $repoRoot
+  $xiaozhiCommandMarker = $xiaozhiApp
+  $xiaozhiCommandRoot = $xiaozhiApp
   $statePath = Get-FusionRuntimeStatePath -RuntimeStatePath $RuntimeStatePath
   if (-not (Test-Path -LiteralPath $xiaozhiApp -PathType Leaf)) {
     throw "XiaoZhi app.py was not found under the requested server directory."
+  }
+  if (-not (Test-Path -LiteralPath $buddyIdentity -PathType Leaf)) {
+    throw "Buddy Core app.py was not found."
   }
 
   Assert-FusionPortsAvailable -Ports @(8010, 8000, 8003)
   Copy-FusionProviderEnvironmentToProcess
   Invoke-RenderFusionConfig -AdvertiseHost $AdvertiseHost
 
-  $buddyWrapper = Start-FusionProcess -Name "buddy-core" -WorkingDirectory $repoRoot -ArgumentList @(
-    "run", "--no-capture-output", "-n", $CondaEnv, "python", "-m", "uvicorn", "buddy_brain.app:app", "--app-dir", $repoRoot, "--host", "0.0.0.0", "--port", "8010"
-  )
-  Wait-FusionHttpHealth -Port 8010
-  $buddyListener = Resolve-ServiceListenerPid -Ports @(8010) -ExpectedIdentity $buddyIdentity -CondaEnv $CondaEnv
+  $buddyWrapper = $null
+  $xiaozhiWrapper = $null
+  $buddyListener = 0
+  $xiaozhiListener = 0
+  try {
+    $buddyWrapper = Start-FusionProcess -Name "buddy-core" -WorkingDirectory $repoRoot -ArgumentList @(
+      "run", "--no-capture-output", "-n", $CondaEnv, "python", "-m", "uvicorn", $buddyCommandMarker, "--app-dir", $repoRoot, "--host", "0.0.0.0", "--port", "8010"
+    )
+    Wait-FusionPorts -Ports @(8010)
+    $buddyListener = Resolve-ServiceListenerPid -Ports @(8010) -ExpectedIdentity $buddyIdentity -ExpectedCommandMarker $buddyCommandMarker -ExpectedCommandRoot $buddyCommandRoot -CondaEnv $CondaEnv
+    Wait-FusionHttpHealth -Port 8010
 
-  $xiaozhiWrapper = Start-FusionProcess -Name "xiaozhi" -WorkingDirectory $serverRoot -ArgumentList @(
-    "run", "--no-capture-output", "-n", $CondaEnv, "python", $xiaozhiApp
-  )
-  Wait-FusionPorts -Ports @(8000, 8003)
-  Wait-FusionHttpHealth -Port 8003
-  $xiaozhiListener = Resolve-ServiceListenerPid -Ports @(8000, 8003) -ExpectedIdentity $xiaozhiApp -CondaEnv $CondaEnv
+    $xiaozhiWrapper = Start-FusionProcess -Name "xiaozhi" -WorkingDirectory $serverRoot -ArgumentList @(
+      "run", "--no-capture-output", "-n", $CondaEnv, "python", $xiaozhiApp
+    )
+    Wait-FusionPorts -Ports @(8000, 8003)
+    $xiaozhiListener = Resolve-ServiceListenerPid -Ports @(8000, 8003) -ExpectedIdentity $xiaozhiApp -ExpectedCommandMarker $xiaozhiCommandMarker -ExpectedCommandRoot $xiaozhiCommandRoot -CondaEnv $CondaEnv
+    Wait-FusionHttpHealth -Port 8003
 
-  Write-FusionRuntimeState -RuntimeStatePath $statePath -BuddyListenerPid $buddyListener -BuddyWrapperPid $buddyWrapper.Id -BuddyIdentity $buddyIdentity -XiaoZhiListenerPid $xiaozhiListener -XiaoZhiWrapperPid $xiaozhiWrapper.Id -XiaoZhiIdentity $xiaozhiApp
-  return [pscustomobject]@{ RuntimeStatePath = $statePath; BuddyCorePid = $buddyListener; XiaoZhiPid = $xiaozhiListener }
+    Write-FusionRuntimeState -RuntimeStatePath $statePath -BuddyListenerPid $buddyListener -BuddyWrapperPid $buddyWrapper.Id -BuddyIdentity $buddyIdentity -BuddyCommandMarker $buddyCommandMarker -BuddyCommandRoot $buddyCommandRoot -XiaoZhiListenerPid $xiaozhiListener -XiaoZhiWrapperPid $xiaozhiWrapper.Id -XiaoZhiIdentity $xiaozhiApp -XiaoZhiCommandMarker $xiaozhiCommandMarker -XiaoZhiCommandRoot $xiaozhiCommandRoot
+    return [pscustomobject]@{ RuntimeStatePath = $statePath; BuddyCorePid = $buddyListener; XiaoZhiPid = $xiaozhiListener }
+  }
+  catch {
+    $startupError = $_.Exception.Message
+    $cleanupErrors = @()
+    foreach ($service in @(
+      [pscustomobject]@{ ListenerPid = $xiaozhiListener; Wrapper = $xiaozhiWrapper; Ports = @(8000, 8003); Identity = $xiaozhiApp; Marker = $xiaozhiCommandMarker; Root = $xiaozhiCommandRoot },
+      [pscustomobject]@{ ListenerPid = $buddyListener; Wrapper = $buddyWrapper; Ports = @(8010); Identity = $buddyIdentity; Marker = $buddyCommandMarker; Root = $buddyCommandRoot }
+    )) {
+      try {
+        if ([int]$service.ListenerPid -gt 0) {
+          [void](Stop-FusionOwnedProcess -ProcessId ([int]$service.ListenerPid) -ExpectedIdentity $service.Identity -ExpectedCommandMarker $service.Marker -ExpectedCommandRoot $service.Root -CondaEnv $CondaEnv)
+          Wait-FusionPortsReleased -Ports $service.Ports
+        }
+        if ($service.Wrapper) {
+          [void](Stop-FusionWrapperProcess -ProcessId ([int]$service.Wrapper.Id) -ExpectedCommandMarker $service.Marker -ExpectedCommandRoot $service.Root)
+        }
+      }
+      catch {
+        $cleanupErrors += $_.Exception.Message
+      }
+    }
+    if (Test-Path -LiteralPath $statePath -PathType Leaf) {
+      Remove-Item -LiteralPath $statePath -Force
+    }
+    $cleanupSuffix = if ($cleanupErrors.Count -gt 0) { " Cleanup errors: $($cleanupErrors -join '; ')" } else { "" }
+    throw "Fusion startup failed: $startupError.$cleanupSuffix"
+  }
 }
 
 if ($MyInvocation.InvocationName -ne ".") {

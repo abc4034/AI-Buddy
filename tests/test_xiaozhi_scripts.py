@@ -24,6 +24,7 @@ SCRIPTS = [
     "start_buddy_brain.ps1",
     "start_xiaozhi_server.ps1",
     "start_buddy_fusion.ps1",
+    "fusion_process_helpers.ps1",
     "stop_local_demo.ps1",
     "print_local_demo_urls.ps1",
     "smoke_chat.ps1",
@@ -2594,7 +2595,7 @@ def test_fusion_startup_waits_for_buddy_before_starting_xiaozhi_and_records_list
                 "function Start-FusionProcess { param($Name, $WorkingDirectory, $ArgumentList) $script:events += ('start:' + $Name); [pscustomobject]@{ Id = if ($Name -eq 'buddy-core') { 101 } else { 102 } } }",
                 "function Wait-FusionHttpHealth { param($Port) $script:events += ('health:' + $Port) }",
                 "function Wait-FusionPorts { param($Ports) $script:events += ('ports:' + ($Ports -join ',')) }",
-                "function Resolve-ServiceListenerPid { param($Ports, $ExpectedIdentity, $CondaEnv) if ($Ports[0] -eq 8010) { 201 } else { 202 } }",
+                "function Resolve-ServiceListenerPid { param($Ports, $ExpectedIdentity, $ExpectedCommandMarker, $ExpectedCommandRoot, $CondaEnv) if ($Ports[0] -eq 8010) { 201 } else { 202 } }",
                 f"Invoke-StartBuddyFusion -AdvertiseHost '192.168.1.10' -CondaEnv 'xiaozhi-env' -ServerDir '{server_dir}' -RuntimeStatePath '{runtime_path}' | Out-Null",
                 "$payload = [pscustomobject]@{ Events = $script:events; Runtime = Get-Content -Raw -LiteralPath '" + str(runtime_path).replace("\\", "\\\\") + "' | ConvertFrom-Json }",
                 "$payload | ConvertTo-Json -Compress",
@@ -2608,6 +2609,7 @@ def test_fusion_startup_waits_for_buddy_before_starting_xiaozhi_and_records_list
         "environment",
         "render",
         "start:buddy-core",
+        "ports:8010",
         "health:8010",
         "start:xiaozhi",
         "ports:8000,8003",
@@ -2677,3 +2679,134 @@ def test_fusion_scripts_never_emit_environment_values():
         text = (SCRIPTS_DIR / name).read_text(encoding="utf-8")
         assert "$_ .Value" not in text
         assert "Write-Host $env:" not in text
+
+
+def test_fusion_startup_rolls_back_validated_listeners_and_wrappers_on_failure(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "start_buddy_fusion.ps1"
+    server_dir = REPO_ROOT / "xiaozhi_server"
+    runtime_path = tmp_path / "runtime.json"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:events = @()",
+                "function Assert-FusionPortsAvailable {}",
+                "function Copy-FusionProviderEnvironmentToProcess {}",
+                "function Invoke-RenderFusionConfig {}",
+                "function Start-FusionProcess { param($Name) [pscustomobject]@{ Id = if ($Name -eq 'buddy-core') { 101 } else { 102 } } }",
+                "function Wait-FusionPorts { param($Ports) if ($Ports -contains 8000) { throw 'xiaozhi readiness failed' } }",
+                "function Wait-FusionHttpHealth {}",
+                "function Resolve-ServiceListenerPid { param($Ports, $ExpectedIdentity, $ExpectedCommandMarker, $ExpectedCommandRoot, $CondaEnv) if ($Ports -contains 8010) { 201 } else { 202 } }",
+                "function Stop-FusionOwnedProcess { param($ProcessId) $script:events += ('listener:' + $ProcessId); $true }",
+                "function Stop-FusionWrapperProcess { param($ProcessId) $script:events += ('wrapper:' + $ProcessId); $true }",
+                "function Wait-FusionPortsReleased {}",
+                f"try {{ Invoke-StartBuddyFusion -AdvertiseHost '192.168.1.10' -ServerDir '{server_dir}' -RuntimeStatePath '{runtime_path}' }} catch {{ $script:events += $_.Exception.Message }}",
+                "$script:events | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    events = json.loads(result.stdout)
+
+    assert "listener:201" in events
+    assert "wrapper:102" in events
+    assert "wrapper:101" in events
+    assert any("xiaozhi readiness failed" in event for event in events)
+    assert not runtime_path.exists()
+
+
+def test_fusion_stop_rejects_a_stored_pid_that_no_longer_owns_the_ports():
+    script_path = SCRIPTS_DIR / "stop_local_demo.ps1"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$service = [pscustomobject]@{ ListenerPid = 42; WrapperPid = 0; ExpectedIdentity = 'C:\\repo\\app.py'; ExpectedCommandMarker = 'app.py'; ExpectedCommandRoot = 'C:\\repo'; Ports = @(8000, 8003) }",
+                "function Resolve-FusionPortOwnerPid { 99 }",
+                "function Stop-FusionOwnedProcess { throw 'must not stop' }",
+                "try { Stop-FusionService -Service $service -CondaEnv 'xiaozhi-env' -WhatIf } catch { $_.Exception.Message }",
+                "}",
+            ]
+        )
+    )
+
+    assert "no longer owns" in result.stdout.lower()
+    assert "must not stop" not in result.stdout.lower()
+
+
+def test_fusion_status_uses_runtime_state_and_reports_owned_or_mismatch(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "check_local_demo_status.ps1"
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(
+        json.dumps(
+            {
+                "SchemaVersion": 2,
+                "BuddyCore": {
+                    "ListenerPid": 41,
+                    "ExpectedIdentity": str(REPO_ROOT / "buddy_brain" / "app.py"),
+                    "ExpectedCommandMarker": "buddy_brain.app:app",
+                    "ExpectedCommandRoot": str(REPO_ROOT),
+                    "Ports": [8010],
+                },
+                "XiaoZhi": {
+                    "ListenerPid": 42,
+                    "ExpectedIdentity": str(REPO_ROOT / "xiaozhi_server" / "app.py"),
+                    "ExpectedCommandMarker": str(REPO_ROOT / "xiaozhi_server" / "app.py"),
+                    "ExpectedCommandRoot": str(REPO_ROOT / "xiaozhi_server" / "app.py"),
+                    "Ports": [8000, 8003],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function Test-ListeningPort { $true }",
+                "function Get-PortOwnership { param($Port) [pscustomobject]@{ ProcessId = if ($Port -eq 8010) { 41 } else { 42 }; Known = $true } }",
+                "function Get-FusionProvenanceState { [pscustomobject]@{ Verification = 'verified' } }",
+                "function Get-RecentFusionSessions { @() }",
+                "function Test-FusionServiceOwnership { param($Service) return ([int]$Service.ListenerPid -eq 41) }",
+                f"Invoke-CheckLocalDemoStatus -RuntimeStatePath '{runtime_path}' | ConvertTo-Json -Depth 8 -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["RuntimeState"]["Exists"] is True
+    assert payload["RuntimeState"]["BuddyCoreOwned"] is True
+    assert payload["RuntimeState"]["XiaoZhiOwned"] is False
+    assert payload["RuntimeState"]["Status"] == "mismatch"
+
+
+def test_fusion_smoke_prepares_a_unique_device_and_opus_input_for_the_live_validator(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "smoke_xiaozhi_fusion.ps1"
+    opus_dir = tmp_path / "audio"
+    opus_dir.mkdir()
+    (opus_dir / "frame-00001.opus").write_bytes(b"opus")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                f"[pscustomobject]@{{ DeviceId = New-FusionVoiceLoopDeviceId; OpusDirectory = Resolve-FusionOpusDirectory -OpusDirectory '{opus_dir}' }} | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["DeviceId"].startswith("software-voice-loop-")
+    assert Path(payload["OpusDirectory"]).resolve() == opus_dir.resolve()
+    source = script_path.read_text(encoding="utf-8")
+    assert "Invoke-FusionVoiceLoopValidation" in source
+    assert "/debug/sessions" not in source

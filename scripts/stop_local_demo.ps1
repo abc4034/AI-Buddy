@@ -110,6 +110,8 @@ function Wait-PortsReleased {
   throw "Ports were not released: $($Ports -join ', ')."
 }
 
+. (Join-Path $PSScriptRoot "fusion_process_helpers.ps1")
+
 function Stop-FusionService {
   param(
     [object]$Service,
@@ -118,19 +120,18 @@ function Stop-FusionService {
   )
 
   $ports = @($Service.Ports | ForEach-Object { [int]$_ })
-  [void](Stop-FusionOwnedProcess -ProcessId ([int]$Service.ListenerPid) -ExpectedIdentity ([string]$Service.ExpectedIdentity) -CondaEnv $CondaEnv -WhatIf:$WhatIf)
+  $currentListenerPid = Resolve-FusionPortOwnerPid -Ports $ports
+  if ($currentListenerPid -ne [int]$Service.ListenerPid) {
+    throw "Refusing to stop PID $($Service.ListenerPid) because it no longer owns the recorded ports."
+  }
+  [void](Stop-FusionOwnedProcess -ProcessId ([int]$Service.ListenerPid) -ExpectedIdentity ([string]$Service.ExpectedIdentity) -ExpectedCommandMarker ([string]$Service.ExpectedCommandMarker) -ExpectedCommandRoot ([string]$Service.ExpectedCommandRoot) -CondaEnv $CondaEnv -WhatIf:$WhatIf)
   if (-not $WhatIf) {
-    Wait-PortsReleased -Ports $ports
+    Wait-FusionPortsReleased -Ports $ports
   }
 
   $wrapperId = [int]$Service.WrapperPid
   if ($wrapperId -gt 0 -and $wrapperId -ne [int]$Service.ListenerPid) {
-    $wrapper = Get-CimInstance -ClassName Win32_Process -Filter ("ProcessId = {0}" -f $wrapperId) -ErrorAction SilentlyContinue
-    if ($wrapper -and ([string]$wrapper.CommandLine -match '(?i)conda') -and ([string]$wrapper.CommandLine -like "*$($Service.ExpectedIdentity)*")) {
-      if (-not $WhatIf) {
-        Stop-Process -Id $wrapperId -Force -ErrorAction SilentlyContinue
-      }
-    }
+    [void](Stop-FusionWrapperProcess -ProcessId $wrapperId -ExpectedCommandMarker ([string]$Service.ExpectedCommandMarker) -ExpectedCommandRoot ([string]$Service.ExpectedCommandRoot) -WhatIf:$WhatIf)
   }
 }
 
@@ -147,7 +148,7 @@ function Invoke-StopLocalDemo {
     throw "Refusing to stop listeners without an owned fusion runtime state file."
   }
   $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-  if ($null -eq $state.XiaoZhi -or $null -eq $state.BuddyCore) {
+  if ([int]$state.SchemaVersion -ne 2 -or $null -eq $state.XiaoZhi -or $null -eq $state.BuddyCore) {
     throw "Fusion runtime state is incomplete; no process was stopped."
   }
 

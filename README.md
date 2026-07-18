@@ -50,7 +50,7 @@ The supported hardware runtime is Buddy Core on `8010` plus the native XiaoZhi S
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_fusion.ps1 -AdvertiseHost <host-lan-ip> -CondaEnv xiaozhi-env
 ```
 
-Use `http://<host-lan-ip>:8003/xiaozhi/ota/` as the device OTA URL. Check ownership and configuration with `check_local_demo_status.ps1`, then stop only the owned runtime with `stop_local_demo.ps1`. The v0.5 Gateway remains branch history until the cleanup acceptance gate; do not run it on the XiaoZhi ports.
+Use `http://<host-lan-ip>:8003/xiaozhi/ota/` as the device OTA URL. Check ownership and configuration with `check_local_demo_status.ps1`; it validates current listener PIDs against the atomic runtime state instead of trusting open ports. Run `smoke_xiaozhi_fusion.ps1` to replay a verified local hardware Opus capture through a unique same-socket voice loop, then stop only the owned runtime with `stop_local_demo.ps1`. The v0.5 Gateway remains branch history until the cleanup acceptance gate; do not run it on the XiaoZhi ports.
 
 ## Setup
 
