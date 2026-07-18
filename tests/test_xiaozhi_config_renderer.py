@@ -16,7 +16,7 @@ LIVE_ENVIRONMENT = {
     "ASR_MODEL": "qwen3-asr-flash-test",
     "ASR_API_KEY": "test-asr-key-not-a-real-secret",
     "ASR_TIMEOUT_SECONDS": "7.5",
-    "TTS_PROVIDER": "BuddyQwenTTS",
+    "TTS_PROVIDER": "buddy_qwen_http",
     "TTS_HTTP_URL": "https://tts.example.test/api/v1",
     "TTS_MODEL": "qwen3-tts-instruct-flash-test",
     "TTS_API_KEY": "test-tts-key-not-a-real-secret",

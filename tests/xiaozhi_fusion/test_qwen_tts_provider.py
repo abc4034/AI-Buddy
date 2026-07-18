@@ -19,7 +19,7 @@ from integrations.xiaozhi_server.render_config import get_tts_environment, rende
 
 
 TEST_TTS_ENVIRONMENT = {
-    "TTS_PROVIDER": "BuddyQwenTTS",
+    "TTS_PROVIDER": "buddy_qwen_http",
     "TTS_HTTP_URL": "https://tts.example.test/api/v1",
     "TTS_MODEL": "qwen3-tts-instruct-flash-test",
     "TTS_API_KEY": "test-key-not-a-real-secret",
@@ -187,7 +187,7 @@ def test_renderer_uses_process_tts_environment_before_user_environment_without_p
     )
 
     assert "TTS: BuddyQwenTTS" in rendered
-    assert "type: buddy_qwen_http" in rendered
+    assert 'type: "buddy_qwen_http"' in rendered
     assert 'model: "process-model"' in rendered
     assert TEST_TTS_ENVIRONMENT["TTS_API_KEY"] in output.read_text(encoding="utf-8")
     assert TEST_TTS_ENVIRONMENT["TTS_API_KEY"] not in capsys.readouterr().out
@@ -204,6 +204,13 @@ def test_renderer_rejects_incomplete_or_invalid_live_tts_configuration_without_e
     assert "TTS_TIMEOUT_SECONDS" in str(error.value)
 
 
+def test_renderer_rejects_an_unexpected_tts_provider():
+    environment = render_environment(TTS_PROVIDER="some_other_provider")
+
+    with pytest.raises(ValueError, match="TTS_PROVIDER"):
+        render_config("192.168.2.9", process_environment=environment, user_environment={})
+
+
 def test_render_script_injects_tts_environment_without_passing_or_printing_secrets():
     script = (REPO_ROOT / "scripts" / "render_xiaozhi_config.ps1").read_text(encoding="utf-8")
 
@@ -216,6 +223,52 @@ def test_render_script_injects_tts_environment_without_passing_or_printing_secre
 def test_tts_smoke_observes_native_queue_output_without_reading_tts_secrets():
     script = (REPO_ROOT / "scripts" / "smoke_xiaozhi_tts.ps1").read_text(encoding="utf-8")
 
-    assert "Get-Content" in script
-    assert "opus" in script.lower()
+    assert "integrations.xiaozhi_server.smoke_tts" in script
+    assert "Get-Content" not in script
     assert "TTS_API_KEY" not in script
+
+
+def test_tts_smoke_drives_the_selected_provider_through_native_send_path(monkeypatch, tmp_path):
+    from integrations.xiaozhi_server import smoke_tts
+
+    config_path = tmp_path / ".config.yaml"
+    config_path.write_text(
+        """
+selected_module:
+  TTS: BuddyQwenTTS
+TTS:
+  BuddyQwenTTS:
+    type: buddy_qwen_http
+    api_key: placeholder
+    api_url: https://tts.example.test/api/v1
+    model: fixture-model
+    voice: Cherry
+""".strip(),
+        encoding="utf-8",
+    )
+
+    class FakeProvider:
+        tts_audio_first_sentence = True
+        conn = None
+
+        def to_tts(self, text):
+            assert text == "known turn"
+            return [b"opus-a", b"opus-b"]
+
+    monkeypatch.setattr(smoke_tts, "create_instance", lambda provider_type, config, delete: FakeProvider())
+
+    result = smoke_tts.run_smoke(config_path, "known turn")
+
+    assert result.provider_type == "buddy_qwen_http"
+    assert result.opus_frame_count == 2
+    assert result.tts_start_count == 1
+
+
+def test_tts_smoke_rejects_an_inactive_runtime_provider(tmp_path):
+    from integrations.xiaozhi_server import smoke_tts
+
+    config_path = tmp_path / ".config.yaml"
+    config_path.write_text("selected_module: {TTS: OtherTTS}\nTTS: {}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="BuddyQwenTTS"):
+        smoke_tts.run_smoke(config_path, "known turn")

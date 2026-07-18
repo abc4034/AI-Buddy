@@ -59,7 +59,7 @@ ASR:
 
 TTS:
   BuddyQwenTTS:
-    type: buddy_qwen_http
+    type: ${TTS_PROVIDER}
     api_key: ${TTS_API_KEY}
     api_url: ${TTS_HTTP_URL}
     model: ${TTS_MODEL}

@@ -204,6 +204,10 @@ function Assert-LiveTtsEnvironment {
     }
   }
 
+  if ((Get-ProcessThenUserEnvironmentValue -Name "TTS_PROVIDER") -ne "buddy_qwen_http") {
+    throw "TTS_PROVIDER must be buddy_qwen_http."
+  }
+
   $timeoutText = Get-ProcessThenUserEnvironmentValue -Name "TTS_TIMEOUT_SECONDS"
   $timeout = 0.0
   if (

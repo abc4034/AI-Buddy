@@ -134,6 +134,8 @@ def validate_tts_environment(environment: dict[str, str]) -> dict[str, str]:
     if missing or not math.isfinite(timeout) or timeout <= 0:
         requirements = ", ".join((*required, "a positive TTS_TIMEOUT_SECONDS"))
         raise ValueError(f"TTS live mode requires {requirements}.")
+    if environment["TTS_PROVIDER"] != "buddy_qwen_http":
+        raise ValueError("TTS_PROVIDER must be buddy_qwen_http.")
 
     validated = dict(environment)
     validated["TTS_TIMEOUT_SECONDS"] = format(timeout, "g")

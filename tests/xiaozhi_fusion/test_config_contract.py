@@ -111,8 +111,15 @@ def test_config_renderer_enables_buddy_ownership_overlay():
         "ASR_HTTP_URL": "https://asr.example.test/v1",
         "ASR_MODEL": "qwen3-asr-flash",
         "ASR_TIMEOUT_SECONDS": "7.5",
+        "TTS_PROVIDER": "buddy_qwen_http",
+        "TTS_HTTP_URL": "https://tts.example.test/api/v1",
+        "TTS_MODEL": "qwen3-tts-instruct-flash-test",
+        "TTS_VOICE": "Cherry",
+        "TTS_LANGUAGE": "auto",
+        "TTS_TIMEOUT_SECONDS": "7.5",
     }
     environment["ASR_" + "API_KEY"] = "fixture"
+    environment["TTS_" + "API_KEY"] = "placeholder"
     rendered = render_config(
         "192.168.2.9",
         process_environment=environment,

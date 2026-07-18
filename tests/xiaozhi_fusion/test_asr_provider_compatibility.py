@@ -27,6 +27,15 @@ TEST_ASR_ENVIRONMENT = {
     "ASR_API_KEY": "test-key-not-a-real-secret",
     "ASR_TIMEOUT_SECONDS": "7.5",
 }
+TEST_TTS_ENVIRONMENT = {
+    "TTS_PROVIDER": "buddy_qwen_http",
+    "TTS_HTTP_URL": "https://tts.example.test/api/v1",
+    "TTS_MODEL": "qwen3-tts-instruct-flash-test",
+    "TTS_API_KEY": "placeholder",
+    "TTS_VOICE": "Cherry",
+    "TTS_LANGUAGE": "auto",
+    "TTS_TIMEOUT_SECONDS": "7.5",
+}
 
 
 class ProviderResponseError(RuntimeError):
@@ -53,9 +62,9 @@ def run(provider: ASRProvider, artifact=None):
 
 
 def test_renderer_uses_process_environment_before_user_environment_and_never_prints_secrets(capsys, tmp_path):
-    process_environment = dict(TEST_ASR_ENVIRONMENT)
+    process_environment = dict(TEST_ASR_ENVIRONMENT, **TEST_TTS_ENVIRONMENT)
     process_environment["ASR_MODEL"] = "process-model"
-    user_environment = dict(TEST_ASR_ENVIRONMENT)
+    user_environment = dict(TEST_ASR_ENVIRONMENT, **TEST_TTS_ENVIRONMENT)
     user_environment["ASR_MODEL"] = "user-model"
 
     rendered = render_config(
