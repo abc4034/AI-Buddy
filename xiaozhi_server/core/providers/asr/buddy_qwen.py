@@ -1,5 +1,6 @@
 import base64
 import math
+import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -29,6 +30,7 @@ class ASRProvider(ASRProviderBase):
             or self.timeout_seconds <= 0
         ):
             raise ValueError("Buddy Qwen ASR requires api_key, model_name, base_url, and a positive timeout_seconds.")
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def prefers_temp_file(self) -> bool:
         return True

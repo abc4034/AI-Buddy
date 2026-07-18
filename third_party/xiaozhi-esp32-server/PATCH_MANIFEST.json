@@ -29,7 +29,7 @@
       "status": "added"
     },
     {
-      "current_sha256": "6f3350fb505f7eb0851b967ecb7174f33f337940de321da8746907a8bbe3188a",
+      "current_sha256": "ea991b387ea45350de6ad8f0136db8b0f7f8de913fe886ddfff027742384349e",
       "original_sha256": null,
       "path": "core/providers/asr/buddy_qwen.py",
       "reason": "Add the compatibility-authorized Qwen chat-completions ASR provider for the configured endpoint after native DashScope returned HTTP 404.",

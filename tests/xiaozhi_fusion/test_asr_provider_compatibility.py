@@ -290,6 +290,22 @@ def test_buddy_qwen_returns_transcript_from_compatible_chat_response(monkeypatch
     assert captured["request"]["headers"]["Authorization"].endswith(TEST_ASR_ENVIRONMENT["ASR_API_KEY"])
 
 
+def test_buddy_qwen_initializes_output_dir_for_base_wrapper(monkeypatch, tmp_path):
+    output_dir = tmp_path / "missing" / "audio_output"
+    config = provider_config()
+    config["output_dir"] = str(output_dir)
+    install_fallback_client(
+        monkeypatch,
+        response=FakeResponse(200, {"choices": [{"message": {"content": "hello"}}]}),
+    )
+
+    provider = BuddyQwenASRProvider(config, delete_audio_file=True)
+    result = asyncio.run(provider.speech_to_text_wrapper([b"\x00\x00" * 960], "session-1"))
+
+    assert output_dir.is_dir()
+    assert result == ("hello", None)
+
+
 def test_buddy_qwen_preserves_valid_empty_recognition(monkeypatch, tmp_path):
     install_fallback_client(
         monkeypatch,
