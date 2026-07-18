@@ -10,6 +10,7 @@ from core.utils import textUtils
 from core.utils.util import audio_to_data
 from core.providers.tts.dto.dto import SentenceType
 from core.utils.audioRateController import AudioRateController
+from core.buddy.diagnostics import record_event
 
 TAG = __name__
 # 音频帧时长（毫秒）
@@ -310,6 +311,9 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
 
     # 发送消息到客户端
     await conn.websocket.send(json.dumps(message))
+    event_type = {"start": "tts_start", "sentence_start": "tts_start", "stop": "tts_stop"}.get(state)
+    if event_type:
+        record_event(conn.session_id, event_type, {"state": state})
 
 
 async def send_stt_message(conn: "ConnectionHandler", text):

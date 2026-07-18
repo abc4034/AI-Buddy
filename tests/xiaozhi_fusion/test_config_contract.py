@@ -103,6 +103,83 @@ def test_buddy_mode_rejects_a_remote_manager_before_fetching_remote_configuratio
         asyncio.run(config_loader.load_config())
 
 
+def fault_config() -> dict[str, object]:
+    config = buddy_config()
+    config["fault_test_mode"] = True
+    config["server"] = {"ip": "127.0.0.1", "port": 18000, "http_port": 18003}
+    config["selected_module"] = dict(config["selected_module"], ASR="BuddyFaultASR", TTS="BuddyFaultTTS")
+    config["LLM"] = {"BuddyCoreLLM": {"type": "buddy_core", "base_url": "http://127.0.0.1:18010"}}
+    config["ASR"] = {"BuddyFaultASR": {"type": "buddy_fault", "base_url": "http://127.0.0.1:18081"}}
+    config["TTS"] = {"BuddyFaultTTS": {"type": "buddy_qwen_http", "api_url": "http://127.0.0.1:18081"}}
+    return config
+
+
+def test_fault_effective_config_requires_the_complete_loopback_gate(monkeypatch, tmp_path):
+    approved = tmp_path / "tmp" / "fault-config"
+    approved.mkdir(parents=True)
+    config_path = approved / "fault.yaml"
+    config_path.write_text("fault_test_mode: true\n", encoding="utf-8")
+    monkeypatch.setenv("BUDDY_FAULT_TEST_MODE", "1")
+    monkeypatch.setenv("BUDDY_XIAOZHI_CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_loader, "get_project_dir", lambda: str(tmp_path / "xiaozhi_server") + "/")
+
+    validate_effective_config(fault_config())
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (lambda config: config.update(fault_test_mode=False), "fault_test_mode"),
+        (lambda config: config["server"].update(ip="192.168.1.2"), "loopback"),
+        (lambda config: config["server"].update(port=8000), "production"),
+        (lambda config: config["LLM"]["BuddyCoreLLM"].update(base_url="http://192.168.1.2:18010"), "loopback"),
+    ],
+)
+def test_fault_effective_config_rejects_each_missing_gate_condition(monkeypatch, tmp_path, mutation, match):
+    approved = tmp_path / "tmp" / "fault-config"
+    approved.mkdir(parents=True)
+    config_path = approved / "fault.yaml"
+    config_path.write_text("fault_test_mode: true\n", encoding="utf-8")
+    monkeypatch.setenv("BUDDY_FAULT_TEST_MODE", "1")
+    monkeypatch.setenv("BUDDY_XIAOZHI_CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_loader, "get_project_dir", lambda: str(tmp_path / "xiaozhi_server") + "/")
+    config = fault_config()
+    mutation(config)
+
+    with pytest.raises(ValueError, match=match):
+        validate_effective_config(config)
+
+
+def test_fault_config_path_escape_is_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("BUDDY_FAULT_TEST_MODE", "1")
+    monkeypatch.setenv("BUDDY_XIAOZHI_CONFIG_PATH", str(tmp_path / "outside.yaml"))
+    monkeypatch.setattr(config_loader, "get_project_dir", lambda: str(tmp_path / "xiaozhi_server") + "/")
+
+    with pytest.raises(ValueError, match="fault-config"):
+        config_loader.get_fault_config_path()
+
+
+def test_fault_loader_rejects_manager_url_before_remote_fetch(monkeypatch, tmp_path):
+    approved = tmp_path / "tmp" / "fault-config"
+    approved.mkdir(parents=True)
+    config_path = approved / "fault.yaml"
+    fault = fault_config()
+    fault["manager-api"] = {"url": "http://manager.invalid", "secret": ""}
+    config_path.write_text(yaml.safe_dump(fault), encoding="utf-8")
+    monkeypatch.setenv("BUDDY_FAULT_TEST_MODE", "1")
+    monkeypatch.setenv("BUDDY_XIAOZHI_CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_loader, "get_project_dir", lambda: str(tmp_path / "xiaozhi_server") + "/")
+    monkeypatch.setattr(config_loader, "read_config", lambda path: yaml.safe_load(config_path.read_text()) if path == str(config_path) else {})
+    monkeypatch.setattr(config_loader, "get_config_from_api_async", lambda _: (_ for _ in ()).throw(AssertionError("must not fetch")))
+    from core.utils.cache.manager import CacheType, cache_manager
+
+    monkeypatch.setattr(cache_manager, "get", lambda *_: None)
+    monkeypatch.setattr(cache_manager, "set", lambda *_: None)
+
+    with pytest.raises(ValueError, match="manager-api.url"):
+        asyncio.run(config_loader.load_config())
+
+
 def test_config_renderer_enables_buddy_ownership_overlay():
     from integrations.xiaozhi_server.render_config import render_config
 

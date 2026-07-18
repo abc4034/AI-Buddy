@@ -46,6 +46,8 @@ from core.utils.voiceprint_provider import VoiceprintProvider
 from core.utils.util import get_system_error_response
 from core.utils import textUtils
 from core.buddy.session_context import context_from_headers, register_context, remove_context
+from core.buddy.diagnostics import record_event
+from core.buddy.provider_errors import BuddyProviderFailure
 
 
 TAG = __name__
@@ -160,6 +162,7 @@ class ConnectionHandler:
         self.asr_audio = []  # 存储PCM帧列表，供VAD和ASR共享
         self.asr_audio_queue = queue.Queue()
         self.current_speaker = None  # 存储当前说话人
+        self.asr_invocation_generation = 0
 
         # llm相关变量
         self.dialogue = Dialogue()
@@ -223,6 +226,7 @@ class ConnectionHandler:
 
             # 认证通过,继续处理
             self.websocket = ws
+            record_event(self.session_id, "connection_open", {})
 
             # 检查是否来自MQTT连接
             request_path = ws.request.path
@@ -1149,6 +1153,10 @@ class ConnectionHandler:
                     self.session_id,
                     llm_dialogue,
                 )
+        except BuddyProviderFailure as error:
+            self.logger.bind(tag=TAG).error(f"Buddy Core provider failure: {error.public_code}")
+            self.notify_provider_failure("buddy", current_sentence_id, None, error.public_code)
+            return None
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM 处理出错 {query}: {e}")
             return None
@@ -1225,24 +1233,14 @@ class ConnectionHandler:
                                 content_detail=content,
                             )
                         )
+        except BuddyProviderFailure as error:
+            self.logger.bind(tag=TAG).error(f"Buddy Core stream failure: {error.public_code}")
+            self.notify_provider_failure("buddy", current_sentence_id, None, error.public_code)
+            return
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM stream processing error: {e}")
-            self.tts.tts_text_queue.put(
-                TTSMessageDTO(
-                    sentence_id=current_sentence_id,
-                    sentence_type=SentenceType.MIDDLE,
-                    content_type=ContentType.TEXT,
-                    content_detail=get_system_error_response(self.config),
-                )
-            )
-            if depth == 0:
-                self.tts.tts_text_queue.put(
-                    TTSMessageDTO(
-                        sentence_id=current_sentence_id,
-                        sentence_type=SentenceType.LAST,
-                        content_type=ContentType.ACTION,
-                    )
-                )
+            if self.config.get("buddy_mode"):
+                self.notify_provider_failure("buddy", current_sentence_id, None, "buddy_failed")
             return
         # 处理function call
         if tool_call_flag:
@@ -1385,6 +1383,7 @@ class ConnectionHandler:
             self.dialogue.put(Message(role="assistant", content=text_buff))
 
         if depth == 0:
+            record_event(self.session_id, "buddy_complete", {})
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
                     sentence_id=current_sentence_id,
@@ -1547,6 +1546,40 @@ class ConnectionHandler:
         self.client_is_speaking = False
         self.logger.bind(tag=TAG).debug(f"清除服务端讲话状态")
 
+    def notify_provider_failure(
+        self, stage, sentence_id, asr_invocation_generation, public_error_code
+    ):
+        """Schedule the native abort only if this failure still owns the live turn."""
+        event_type = {"asr": "asr_error", "buddy": "buddy_error", "tts": "tts_error"}.get(stage)
+        if event_type:
+            record_event(self.session_id, event_type, {"code": public_error_code})
+        loop = getattr(self, "loop", None)
+        if loop is None or loop.is_closed():
+            return
+        try:
+            loop.call_soon_threadsafe(
+                lambda: asyncio.create_task(
+                    ConnectionHandler._abort_if_still_current(
+                        self, sentence_id, asr_invocation_generation
+                    )
+                )
+            )
+        except RuntimeError:
+            return
+
+    @staticmethod
+    async def _abort_if_still_current(conn, sentence_id, asr_invocation_generation):
+        if conn.stop_event.is_set() or not _connection_is_open(conn):
+            return
+        if sentence_id is not None:
+            if sentence_id != conn.sentence_id:
+                return
+        elif asr_invocation_generation != getattr(conn, "asr_invocation_generation", None):
+            return
+        from core.handle.abortHandle import handleAbortMessage
+
+        await handleAbortMessage(conn)
+
     async def close(self, ws=None):
         """资源清理方法"""
         try:
@@ -1662,10 +1695,12 @@ class ConnectionHandler:
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"关闭连接时出错: {e}")
         finally:
+            record_event(self.session_id, "connection_close", {})
             remove_context(self.session_id)
             # 确保停止事件被设置
             if self.stop_event:
                 self.stop_event.set()
+
 
     def clear_queues(self):
         """清空所有任务队列"""
@@ -1858,3 +1893,13 @@ class ConnectionHandler:
                 tool_calls_list[tool_index]["name"] = tool_call.function.name
             if tool_call.function.arguments:
                 tool_calls_list[tool_index]["arguments"] += tool_call.function.arguments
+
+
+def _connection_is_open(conn) -> bool:
+    websocket = getattr(conn, "websocket", None)
+    if websocket is None:
+        return False
+    if getattr(websocket, "closed", False):
+        return False
+    state = getattr(websocket, "state", None)
+    return getattr(state, "name", None) != "CLOSED"

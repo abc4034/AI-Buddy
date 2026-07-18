@@ -23,3 +23,10 @@ Task 5 Buddy Core ownership patches:
 Task 6 Qwen TTS provider patch:
 
 - `core/providers/tts/buddy_qwen_http.py` is a flat-loader `TTSProvider` that performs only the verified DashScope synthesis request and inline/URL audio retrieval. XiaoZhi retains sentence queues, audio normalization, Opus framing, rate control, playback, abort, and connection-state handling.
+
+Task 7 diagnostics and recovery patch:
+
+- `core/buddy/diagnostics.py` provides an `RLock`-guarded, bounded lifecycle registry. The existing `SimpleHttpServer` exposes it at the health and debug routes without IPC, audio data, prompts, credentials, headers, or configuration snapshots.
+- `core/connection.py`, `core/providers/asr/base.py`, and `core/providers/tts/base.py` propagate typed public provider failures to one event-loop callback. That callback rechecks the current sentence or ASR invocation generation and delegates cleanup only to native `handleAbortMessage`.
+- `core/handle/textHandler/listenMessageHandler.py`, `core/handle/sendAudioHandle.py`, and `core/handle/abortHandle.py` add best-effort lifecycle event calls after their owning native actions; they do not parse frames or duplicate speech-state decisions.
+- `config/config_loader.py`, `core/buddy/config_contract.py`, and `core/providers/asr/buddy_fault.py` allow the deterministic fault provider only through a process-scoped, loopback-only config beneath ignored `tmp/fault-config`.

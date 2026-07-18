@@ -25,9 +25,16 @@ from core.providers.tts.dto.dto import (
     ContentType,
     InterfaceType,
 )
+from core.buddy.provider_errors import TTSProviderFailure
 
 TAG = __name__
 logger = setup_logging()
+
+
+def _tts_failure_code(error: Exception) -> str:
+    if isinstance(error, TTSProviderFailure):
+        return error.public_code
+    return "tts_failed"
 
 
 class TTSProviderBase(ABC):
@@ -160,6 +167,7 @@ class TTSProviderBase(ABC):
                 logger.bind(tag=TAG).error(
                     f"语音生成失败: {original_text}，请检查网络或服务是否正常"
                 )
+                self._notify_tts_failure("tts_failed")
             return None
         else:
             tmp_file = self.generate_filename()
@@ -184,10 +192,13 @@ class TTSProviderBase(ABC):
                     logger.bind(tag=TAG).error(
                         f"语音生成失败: {original_text}，请检查网络或服务是否正常"
                     )
+                    self._notify_tts_failure("tts_failed")
+                    return None
                 self.tts_audio_queue.put((SentenceType.FIRST, None, original_text, getattr(self, 'current_sentence_id', None)))
                 self._process_audio_file_stream(tmp_file, callback=opus_handler)
             except Exception as e:
                 logger.bind(tag=TAG).error(f"Failed to generate TTS file: {e}")
+                self._notify_tts_failure(_tts_failure_code(e))
                 return None
     
     def to_tts(self, text):
@@ -406,6 +417,7 @@ class TTSProviderBase(ABC):
                 logger.bind(tag=TAG).error(
                     f"处理TTS文本失败: {str(e)}, 类型: {type(e).__name__}, 堆栈: {traceback.format_exc()}"
                 )
+                self._notify_tts_failure(_tts_failure_code(e))
                 continue
 
     def _audio_play_priority_thread(self):
@@ -467,6 +479,14 @@ class TTSProviderBase(ABC):
 
             except Exception as e:
                 logger.bind(tag=TAG).error(f"audio_play_priority_thread: {text} {e}")
+                self._notify_tts_failure(_tts_failure_code(e))
+
+    def _notify_tts_failure(self, public_code):
+        if self.conn is None or not hasattr(self.conn, "notify_provider_failure"):
+            return
+        self.conn.notify_provider_failure(
+            "tts", getattr(self, "current_sentence_id", None), None, public_code
+        )
 
     async def start_session(self, session_id):
         pass

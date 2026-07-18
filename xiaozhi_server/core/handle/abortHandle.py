@@ -1,4 +1,5 @@
 import json
+from core.buddy.diagnostics import record_event
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,4 +18,5 @@ async def handleAbortMessage(conn: "ConnectionHandler"):
         json.dumps({"type": "tts", "state": "stop", "session_id": conn.session_id})
     )
     conn.clearSpeakStatus()
+    record_event(conn.session_id, "abort", {})
     conn.logger.bind(tag=TAG).info("Abort message received-end")

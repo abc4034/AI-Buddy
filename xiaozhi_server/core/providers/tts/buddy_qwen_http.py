@@ -7,9 +7,10 @@ from pathlib import Path
 import requests
 
 from core.providers.tts.base import TTSProviderBase
+from core.buddy.provider_errors import TTSProviderFailure
 
 
-class TTSProviderError(RuntimeError):
+class TTSProviderError(TTSProviderFailure):
     pass
 
 
@@ -49,9 +50,9 @@ class TTSProvider(TTSProviderBase):
         try:
             response = requests.post(self.api_url, headers=headers, json=payload, timeout=self.timeout_seconds)
         except requests.Timeout as exc:
-            raise TTSProviderError("TTS request timeout") from exc
+            raise TTSProviderError("tts_timeout", "TTS request timeout") from exc
         except requests.RequestException as exc:
-            raise TTSProviderError("TTS service request failed") from exc
+            raise TTSProviderError("tts_failed", "TTS service request failed") from exc
 
         _raise_for_status(response, "TTS synthesis")
         audio = _audio_from_response(response, self.timeout_seconds)
@@ -93,8 +94,8 @@ def _raise_for_status(response, action):
     if response.status_code < 400:
         return
     if response.status_code in (401, 403):
-        raise TTSProviderError(f"{action} authentication failed")
-    raise TTSProviderError(f"{action} service failed")
+        raise TTSProviderError("tts_authentication", f"{action} authentication failed")
+    raise TTSProviderError("tts_failed", f"{action} service failed")
 
 
 def _audio_from_response(response, timeout_seconds):
@@ -105,29 +106,29 @@ def _audio_from_response(response, timeout_seconds):
     try:
         payload = response.json()
     except ValueError as exc:
-        raise TTSProviderError("TTS synthesis returned malformed JSON") from exc
+        raise TTSProviderError("tts_malformed_response", "TTS synthesis returned malformed JSON") from exc
     if not isinstance(payload, dict):
-        raise TTSProviderError("TTS synthesis returned malformed JSON")
+        raise TTSProviderError("tts_malformed_response", "TTS synthesis returned malformed JSON")
 
     audio = _audio_payload(payload)
     if not audio:
-        raise TTSProviderError("TTS synthesis response did not contain audio")
+        raise TTSProviderError("tts_malformed_response", "TTS synthesis response did not contain audio")
     encoded = audio.get("data")
     if isinstance(encoded, str) and encoded.strip():
         try:
             return base64.b64decode(encoded, validate=True)
         except (ValueError, binascii.Error) as exc:
-            raise TTSProviderError("TTS synthesis audio was malformed") from exc
+            raise TTSProviderError("tts_malformed_response", "TTS synthesis audio was malformed") from exc
 
     audio_url = _audio_url(audio, payload)
     if not audio_url:
-        raise TTSProviderError("TTS synthesis response did not contain audio")
+        raise TTSProviderError("tts_malformed_response", "TTS synthesis response did not contain audio")
     try:
         download = requests.get(audio_url, timeout=timeout_seconds)
     except requests.Timeout as exc:
-        raise TTSProviderError("TTS audio download timeout") from exc
+        raise TTSProviderError("tts_timeout", "TTS audio download timeout") from exc
     except requests.RequestException as exc:
-        raise TTSProviderError("TTS audio download failed") from exc
+        raise TTSProviderError("tts_failed", "TTS audio download failed") from exc
     _raise_for_status(download, "TTS audio download")
     return download.content
 

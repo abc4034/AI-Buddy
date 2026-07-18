@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from core.buddy.config_contract import BUDDY_CORE_BASE_URL
+from core.buddy.provider_errors import BuddyProviderFailure
 from core.buddy.session_context import get_context
 from core.providers.llm.base import LLMProviderBase
 
@@ -23,10 +24,10 @@ class LLMProvider(LLMProviderBase):
     def response(self, session_id, dialogue):
         context = get_context(session_id)
         if context is None:
-            raise RuntimeError("Buddy Core LLM requires a registered session context.")
+            raise BuddyProviderFailure("buddy_invalid_request", "Buddy Core LLM requires a registered session context.")
         user_turn = _latest_user_turn(dialogue)
         if user_turn is None:
-            raise RuntimeError("Buddy Core LLM requires a current user turn.")
+            raise BuddyProviderFailure("buddy_invalid_request", "Buddy Core LLM requires a current user turn.")
 
         payload = {
             "messages": [{"role": "user", "content": user_turn}],
@@ -43,8 +44,10 @@ class LLMProvider(LLMProviderBase):
                 response = client.post(f"{self.base_url}/v1/chat/completions", json=payload)
                 response.raise_for_status()
                 assistant_text = _assistant_text(response.json())
+        except httpx.TimeoutException as error:
+            raise BuddyProviderFailure("buddy_timeout", "Buddy Core LLM request timed out.") from error
         except httpx.HTTPError as error:
-            raise RuntimeError("Buddy Core LLM request failed.") from error
+            raise BuddyProviderFailure("buddy_failed", "Buddy Core LLM request failed.") from error
 
         yield assistant_text
 
@@ -71,7 +74,7 @@ def _assistant_text(payload: Any) -> str:
     try:
         content = payload["choices"][0]["message"]["content"]
     except (IndexError, KeyError, TypeError):
-        raise RuntimeError("Buddy Core LLM returned an invalid response.") from None
+        raise BuddyProviderFailure("buddy_invalid_response", "Buddy Core LLM returned an invalid response.") from None
     if not isinstance(content, str) or not content.strip():
-        raise RuntimeError("Buddy Core LLM returned an invalid response.")
+        raise BuddyProviderFailure("buddy_invalid_response", "Buddy Core LLM returned an invalid response.")
     return content

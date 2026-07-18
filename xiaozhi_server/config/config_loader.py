@@ -1,6 +1,7 @@
 import os
 import asyncio
 import yaml
+from pathlib import Path
 from collections.abc import Mapping
 from config.manage_api_client import (
     init_service,
@@ -23,6 +24,24 @@ def read_config(config_path):
     return config
 
 
+def get_fault_config_path() -> str | None:
+    """Return the fault-only config path after enforcing its local containment."""
+    if os.environ.get("BUDDY_FAULT_TEST_MODE") != "1":
+        return None
+    configured = os.environ.get("BUDDY_XIAOZHI_CONFIG_PATH")
+    if not configured:
+        raise ValueError("Fault test mode requires BUDDY_XIAOZHI_CONFIG_PATH.")
+    path = Path(configured)
+    if not path.is_absolute():
+        raise ValueError("Fault config path must be absolute.")
+    allowed = (Path(get_project_dir()).resolve().parent / "tmp" / "fault-config").resolve()
+    try:
+        path.resolve().relative_to(allowed)
+    except ValueError:
+        raise ValueError("Fault config path must be under tmp/fault-config.") from None
+    return str(path.resolve())
+
+
 async def load_config():
     """加载配置文件"""
     from core.utils.cache.manager import cache_manager, CacheType
@@ -36,11 +55,15 @@ async def load_config():
         return cached_config
 
     default_config_path = get_project_dir() + "config.yaml"
-    custom_config_path = get_project_dir() + "data/.config.yaml"
+    fault_config_path = get_fault_config_path()
+    custom_config_path = fault_config_path or get_project_dir() + "data/.config.yaml"
 
     # 加载默认配置
     default_config = read_config(default_config_path)
     custom_config = read_config(custom_config_path)
+
+    if fault_config_path and custom_config.get("manager-api", {}).get("url"):
+        raise ValueError("Fault configuration manager-api.url must be empty.")
 
     from core.buddy.config_contract import validate_effective_config, validate_local_buddy_config
 

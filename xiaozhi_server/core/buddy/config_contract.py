@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlparse
+import ipaddress
+import os
 
 
 BUDDY_CORE_BASE_URL = "http://127.0.0.1:8010"
@@ -31,6 +34,12 @@ def validate_effective_config(config: dict[str, Any]) -> None:
     if config.get("read_config_from_api") is not False:
         raise ValueError("Buddy ownership violation: read_config_from_api must be false.")
 
+    fault_mode = config.get("fault_test_mode") is True
+    if not fault_mode and os.environ.get("BUDDY_FAULT_TEST_MODE") == "1":
+        raise ValueError("Fault configuration requires fault_test_mode: true.")
+    if fault_mode:
+        _validate_fault_gate(config)
+
     selected = _mapping(config.get("selected_module"))
     if selected.get("LLM") != "BuddyCoreLLM":
         raise ValueError("Buddy ownership violation: selected_module.LLM must be BuddyCoreLLM.")
@@ -44,7 +53,7 @@ def validate_effective_config(config: dict[str, Any]) -> None:
     llm = _mapping(_mapping(config.get("LLM")).get("BuddyCoreLLM"))
     if llm.get("type") != "buddy_core":
         raise ValueError("Buddy ownership violation: BuddyCoreLLM.type must be buddy_core.")
-    if llm.get("base_url") != BUDDY_CORE_BASE_URL:
+    if not fault_mode and llm.get("base_url") != BUDDY_CORE_BASE_URL:
         raise ValueError(f"Buddy ownership violation: BuddyCoreLLM.base_url must be {BUDDY_CORE_BASE_URL}.")
 
     if _mapping(config.get("end_prompt")).get("enable") is not False:
@@ -77,3 +86,55 @@ def _is_explicitly_disabled(value: Any) -> bool:
     if isinstance(value, Mapping):
         return value.get("enable") is False
     return False
+
+
+def _validate_fault_gate(config: Mapping[str, Any]) -> None:
+    """Permit alternate local providers only in an explicit, process-scoped fault run."""
+    if os.environ.get("BUDDY_FAULT_TEST_MODE") != "1":
+        raise ValueError("Fault configuration requires BUDDY_FAULT_TEST_MODE=1.")
+
+    from config.config_loader import get_fault_config_path
+
+    if get_fault_config_path() is None:
+        raise ValueError("Fault configuration requires an approved config path.")
+
+    server = _mapping(config.get("server"))
+    if not _is_loopback(server.get("ip")):
+        raise ValueError("Fault configuration server must bind to loopback.")
+    if server.get("port") in (8000, "8000") or server.get("http_port") in (8003, "8003"):
+        raise ValueError("Fault configuration cannot use production ports.")
+
+    selected = _mapping(config.get("selected_module"))
+    if selected.get("ASR") != "BuddyFaultASR":
+        raise ValueError("Fault configuration must select buddy_fault ASR.")
+    asr = _mapping(_mapping(config.get("ASR")).get("BuddyFaultASR"))
+    if asr.get("type") != "buddy_fault" or not _is_fault_loopback_url(asr.get("base_url")):
+        raise ValueError("Fault configuration ASR endpoint must be loopback.")
+
+    llm = _mapping(_mapping(config.get("LLM")).get("BuddyCoreLLM"))
+    if not _is_fault_loopback_url(llm.get("base_url")):
+        raise ValueError("Fault configuration Buddy Core URL must be loopback.")
+
+    if selected.get("TTS") != "BuddyFaultTTS":
+        raise ValueError("Fault configuration must select the fault TTS provider.")
+    tts = _mapping(_mapping(config.get("TTS")).get(selected.get("TTS")))
+    tts_url = tts.get("api_url") or tts.get("base_url")
+    if not _is_fault_loopback_url(tts_url):
+        raise ValueError("Fault configuration TTS endpoint must be loopback.")
+
+
+def _is_loopback(value: Any) -> bool:
+    try:
+        return ipaddress.ip_address(str(value)).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_loopback_url(value: Any) -> bool:
+    parsed = urlparse(str(value))
+    return parsed.scheme in {"http", "ws"} and _is_loopback(parsed.hostname)
+
+
+def _is_fault_loopback_url(value: Any) -> bool:
+    parsed = urlparse(str(value))
+    return _is_loopback_url(value) and parsed.port not in {None, 8000, 8003, 8010}

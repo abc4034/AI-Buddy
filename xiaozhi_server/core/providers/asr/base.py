@@ -14,6 +14,8 @@ import threading
 from abc import ABC, abstractmethod
 from config.logger import setup_logging
 from core.providers.asr.dto.dto import InterfaceType
+from core.buddy.diagnostics import record_event
+from core.buddy.provider_errors import ASRProviderFailure
 from core.handle.receiveAudioHandle import startToChat
 from core.handle.reportHandle import enqueue_asr_report
 from core.utils.util import remove_punctuation_and_length
@@ -83,6 +85,8 @@ class ASRProviderBase(ABC):
     # 处理语音停止
     async def handle_voice_stop(self, conn: "ConnectionHandler", asr_audio_task: List[bytes]):
         """并行处理ASR和声纹识别"""
+        conn.asr_invocation_generation = getattr(conn, "asr_invocation_generation", 0) + 1
+        asr_invocation_generation = conn.asr_invocation_generation
         try:
             total_start_time = time.monotonic()
 
@@ -114,6 +118,11 @@ class ASRProviderBase(ABC):
 
             # 记录识别结果 - 检查是否为异常
             if isinstance(asr_result, Exception):
+                if isinstance(asr_result, ASRProviderFailure):
+                    conn.notify_provider_failure(
+                        "asr", None, asr_invocation_generation, asr_result.public_code
+                    )
+                    return
                 logger.bind(tag=TAG).error(f"ASR识别失败: {asr_result}")
                 raw_text = ""
             else:
@@ -168,6 +177,11 @@ class ASRProviderBase(ABC):
                 enqueue_asr_report(conn, enhanced_text, audio_snapshot)
                 # 使用自定义模块进行上报
                 await startToChat(conn, enhanced_text)
+                record_event(conn.session_id, "asr_complete", {})
+        except ASRProviderFailure as error:
+            logger.bind(tag=TAG).error(f"ASR provider failure: {error.public_code}")
+            conn.notify_provider_failure("asr", None, asr_invocation_generation, error.public_code)
+            return
         except Exception as e:
             logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
             import traceback

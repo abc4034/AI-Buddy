@@ -3,6 +3,7 @@ from aiohttp import web
 from config.logger import setup_logging
 from core.api.ota_handler import OTAHandler
 from core.api.vision_handler import VisionHandler
+from core.buddy.diagnostics import session_summaries
 
 TAG = __name__
 
@@ -13,6 +14,20 @@ class SimpleHttpServer:
         self.logger = setup_logging()
         self.ota_handler = OTAHandler(config)
         self.vision_handler = VisionHandler(config)
+
+    async def health(self, _request):
+        return web.json_response({"status": "ok"})
+
+    async def debug_sessions(self, _request):
+        return web.json_response({"sessions": session_summaries()})
+
+    async def debug_asr_providers(self, _request):
+        selected = self.config.get("selected_module", {}).get("ASR")
+        return web.json_response({"selected_provider": selected})
+
+    async def debug_tts_providers(self, _request):
+        selected = self.config.get("selected_module", {}).get("TTS")
+        return web.json_response({"selected_provider": selected})
 
     def _get_websocket_url(self, local_ip: str, port: int) -> str:
         """获取websocket地址
@@ -65,6 +80,10 @@ class SimpleHttpServer:
                 # 添加路由
                 app.add_routes(
                     [
+                        web.get("/health", self.health),
+                        web.get("/debug/sessions", self.debug_sessions),
+                        web.get("/debug/asr/providers", self.debug_asr_providers),
+                        web.get("/debug/tts/providers", self.debug_tts_providers),
                         web.get("/mcp/vision/explain", self.vision_handler.handle_get),
                         web.post(
                             "/mcp/vision/explain", self.vision_handler.handle_post

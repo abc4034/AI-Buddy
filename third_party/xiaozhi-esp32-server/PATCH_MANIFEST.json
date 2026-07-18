@@ -15,17 +15,24 @@
       "status": "modified"
     },
     {
-      "current_sha256": "0ccec40fca5009c512a9f3a9db99d05c05b87dcc76ef9ceceda9dc851efe8310",
+      "current_sha256": "ce262ffae6a42965b65520f20cce96c3ef080766dd15ed88675bb522ef6f4393",
       "original_sha256": "85f696f67999a474c4785572fca4deffd801c921cac05943d70623697a2b9a06",
       "path": "config/config_loader.py",
       "reason": "Validate Buddy local and merged configuration before remote selection, directory setup, or cache reuse.",
       "status": "modified"
     },
     {
-      "current_sha256": "88f9bb6de830735f0d5faed38a69faf454ae132c41895647cb7f651c99af7b58",
+      "current_sha256": "4f1d6f390990e35d7959724854b516c4841042586d2a33a2ff150533c83ad23f",
       "original_sha256": "ddaed2dd1f2c7beb4b0b39349be6bac1611c2aa1caa3663e793864cd2bfcbf86",
       "path": "core/connection.py",
       "reason": "Register and remove immutable Buddy session identity, preserve invocation-local dialogue snapshots, and bypass upstream tools and manager title persistence in Buddy mode.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "d91caed22cf95ec7013826243537da57c861d8a85c55f4f9e3ea125ddbd1c7e9",
+      "original_sha256": "d94e22b1c044b5b143d81dc21231bc78d9a3ef3a37342914144a9a0ba8a30119",
+      "path": "core/handle/abortHandle.py",
+      "reason": "Record a best-effort bounded abort event after the native abort path completes without taking ownership of speech cleanup.",
       "status": "modified"
     },
     {
@@ -36,10 +43,45 @@
       "status": "modified"
     },
     {
+      "current_sha256": "564408efc584e79c95b981aa947fcb04c27bcf2c5c03813813d937790cd0ce4a",
+      "original_sha256": "81e70e3e27bc92a6eafc62ac5e73b0b0a12e46a14a7f54ebeff48449d67e931c",
+      "path": "core/handle/sendAudioHandle.py",
+      "reason": "Record best-effort TTS lifecycle events after the existing native send path has emitted its control message.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "199f0603f9be4efff12aeb896ebfdda1172c4a6dfeae0826dd43dde3ec44fda3",
+      "original_sha256": "e9d9b48adbc66485eead6852b09773d910b00f2052fd9207a53f461a5c14e7ec",
+      "path": "core/handle/textHandler/listenMessageHandler.py",
+      "reason": "Record best-effort listen lifecycle events at the owning text handler without reparsing frames or changing turn decisions.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "27b793dc28c7bba54fe69c3d944160c3dc42c61e094594d01e10883d70d5681d",
+      "original_sha256": "044b136d14c51d7322f75f59d3678e867d5f7f1b1e1fd8241efaffd20ea642ce",
+      "path": "core/http_server.py",
+      "reason": "Expose bounded local diagnostics through the existing SimpleHttpServer alongside the native OTA routes without creating another HTTP process.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "cef6345aafa9b2c93447e9e835382cc05dbe14968255470916a8beafb94bdb38",
+      "original_sha256": "61558e5cda9e498ebbcd257d3ad0b531e854e139b2c975dacbfa7afbea553a52",
+      "path": "core/providers/asr/base.py",
+      "reason": "Preserve typed ASR provider failures through the native voice-stop boundary, guard stale callbacks by invocation generation, and otherwise retain native ASR lifecycle ownership.",
+      "status": "modified"
+    },
+    {
       "current_sha256": "4ca7b598122265450e2d42e70fb03595383ea056ac29487c36f07ad2dccd809c",
       "original_sha256": "43533c7b1418ba3ffb863cf562fae370e0579d9ffd1af980bdd30c38e58d2043",
       "path": "core/providers/asr/qwen3_asr_flash.py",
       "reason": "Preserve native Qwen provider failures as typed outcomes and pass configured endpoint and timeout to the DashScope SDK compatibility gate.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "ae7835565b2e92d56f5f05c922df5d77d35b05770f011902e375eee7838fd972",
+      "original_sha256": "b3b4b05df9cd4cdf73f9631ef3b2494c68954415287bbf0ec3886e4181763142",
+      "path": "core/providers/tts/base.py",
+      "reason": "Notify the connection lifecycle hook only after final native TTS retry exhaustion or the existing worker catch, without duplicating queue or playback control.",
       "status": "modified"
     },
     {
@@ -57,14 +99,21 @@
       "status": "added"
     },
     {
-      "current_sha256": "4955c685def34d21395cf4053a782098af5e336c238eefac7512a0cafe0d9f74",
+      "current_sha256": "d601785ecd5391200949e8039bb2f603014997cea674f35ff6758678c2f6e5ff",
       "original_sha256": null,
       "path": "core/buddy/config_contract.py",
       "reason": "Validate the Buddy production ownership contract after configuration merge, including the actual context-provider, voiceprint, and neutral-prompt runtime keys, and reject local remote-manager settings before any remote fetch.",
       "status": "added"
     },
     {
-      "current_sha256": "14acb3a002509a549b176be03e15b9201f3cdf3f37fd0bb544ecd7212273b8af",
+      "current_sha256": "1fc141c8e64320b6e5676f48725c726b016d3658f20c187fdd4f10c0c230c699",
+      "original_sha256": null,
+      "path": "core/buddy/diagnostics.py",
+      "reason": "Provide a bounded, redacted in-process lifecycle registry for XiaoZhi's existing SimpleHttpServer debug endpoints without IPC or speech queues.",
+      "status": "added"
+    },
+    {
+      "current_sha256": "ff8c05e9748d36a57857db56aa7a1b437fd85c07c10b8ac6bbe9bfcacdaa621b",
       "original_sha256": null,
       "path": "core/buddy/provider_errors.py",
       "reason": "Define typed public ASR provider failures so upstream ASR errors are not converted to empty recognition.",
@@ -75,6 +124,13 @@
       "original_sha256": null,
       "path": "core/buddy/session_context.py",
       "reason": "Provide the immutable, lock-protected per-connection identity registry used by the Buddy Core LLM provider.",
+      "status": "added"
+    },
+    {
+      "current_sha256": "6eda0729e0268b025144b2262930a8f0ca34bca018a1854372de4b7b5fb4cc61",
+      "original_sha256": null,
+      "path": "core/providers/asr/buddy_fault.py",
+      "reason": "Provide a loopback-only deterministic ASR provider used exclusively by the gated fault-recovery test runtime.",
       "status": "added"
     },
     {
@@ -92,14 +148,14 @@
       "status": "added"
     },
     {
-      "current_sha256": "be904117b65c62e96366502b953064c84162b085813df39e8dbab12e1ac74697",
+      "current_sha256": "d97379cf0ea21cdb8958ac7a8990ae49ffb95f5ab7a49607e9d36e3cabdc90a1",
       "original_sha256": null,
       "path": "core/providers/llm/buddy_core/buddy_core.py",
       "reason": "Route a current user turn with immutable connection metadata to the local Buddy Core OpenAI-compatible endpoint.",
       "status": "added"
     },
     {
-      "current_sha256": "14f551b96f567568c370d6826e51bc9e77bab7ce4cf7079029de7893717d741c",
+      "current_sha256": "f5ed7d0ea1cdcc16b471e271b5ef48625935d45b3c1afefd2e96b0890d0d7504",
       "original_sha256": null,
       "path": "core/providers/tts/buddy_qwen_http.py",
       "reason": "Add the configured Qwen HTTP TTS provider through the native flat loader while leaving upstream audio queueing, encoding, playback, and abort handling unchanged.",
