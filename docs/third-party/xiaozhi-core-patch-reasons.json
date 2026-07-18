@@ -1,0 +1,3 @@
+{
+  "config.yaml": "Blank the upstream shared weather API key because it is unsafe for redistribution in this repository."
+}

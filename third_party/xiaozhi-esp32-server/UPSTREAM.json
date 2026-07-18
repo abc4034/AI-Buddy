@@ -1,0 +1,8 @@
+{
+  "archive_sha256": "9e943075db60faf4be8deecd01ecae53ae6bb1a9d7c62d8eaa7fc381fd16d43d",
+  "commit": "8ec585102711516bf214b262f7d87bc04f9597e2",
+  "imported_at": "2026-07-18T13:03:55.2180890Z",
+  "origin": "https://github.com/xinnan-tech/xiaozhi-esp32-server.git",
+  "source_subtree": "main/xiaozhi-server",
+  "tree": "7b96e40bf6541e9b94bdf7c53de9266e3590464d"
+}

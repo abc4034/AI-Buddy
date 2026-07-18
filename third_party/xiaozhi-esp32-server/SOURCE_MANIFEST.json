@@ -1,0 +1,828 @@
+{
+  "files": [
+    {
+      "path": "agent-base-prompt.txt",
+      "sha256": "4f39b6cf449dac06fd56bfe964d8d91a34f277b0448326162af2a047d32fe900"
+    },
+    {
+      "path": "app.py",
+      "sha256": "620d1695c30d84267df4674de5427344bf0085421856a9ffa41e32fe747afbee"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "afbfbcd58afe3d323474a40f0d6cd08ecb95a7dfefafee7da3999985762fbe17"
+    },
+    {
+      "path": "config/assets/bind_code.wav",
+      "sha256": "b8fdccbb4f0d04adfcc5689c4632a5fbb038737f1a6320c7da79597592329b10"
+    },
+    {
+      "path": "config/assets/bind_code/0.wav",
+      "sha256": "f885794ccb168ac6150ae1b7b8b4550ccd1dfd838327b85fffcc81b55a38d699"
+    },
+    {
+      "path": "config/assets/bind_code/1.wav",
+      "sha256": "b7f740fc2a3d37c4814ddcf4449ddf4d18cb91909c2b66aab3157dff8e6418ea"
+    },
+    {
+      "path": "config/assets/bind_code/2.wav",
+      "sha256": "96cd599eb2d660a2dfc9f1d3d327c304412a554f08c22bb1dedb31e099a8a0de"
+    },
+    {
+      "path": "config/assets/bind_code/3.wav",
+      "sha256": "2dfb2c4b0ac1ec7c0aa52dd9d228422017ebacc439f0091e71d0eb38b9ff28f4"
+    },
+    {
+      "path": "config/assets/bind_code/4.wav",
+      "sha256": "fc431630a8428a9dfaa1e14c6a1797135792b10f29665f1af6c0c49be2224563"
+    },
+    {
+      "path": "config/assets/bind_code/5.wav",
+      "sha256": "7acdf7bd85c37c30e7e1437dcc4592242a2bc24936e41f2b6d055000c39e3b01"
+    },
+    {
+      "path": "config/assets/bind_code/6.wav",
+      "sha256": "3b98029d2f79da26115d1e9ded366b61ec20b99f1366e36e2ffb01e2a8b8c091"
+    },
+    {
+      "path": "config/assets/bind_code/7.wav",
+      "sha256": "e104612c7f640972b5af8c0c568711e8abe29969aee46a750cadf37974d2c7ea"
+    },
+    {
+      "path": "config/assets/bind_code/8.wav",
+      "sha256": "c1ed11548929336e26f6a74b275fbf58d0998efd8d19b5ff9412ef9b268eee3d"
+    },
+    {
+      "path": "config/assets/bind_code/9.wav",
+      "sha256": "0e3642823b5f0b7927c7a85d6001796690e81decce1195ac69a3e8dc48f5f2b8"
+    },
+    {
+      "path": "config/assets/bind_not_found.wav",
+      "sha256": "ce041c02d0dd82a92618c39188f8566eb1071a74bcec2fbc3d062b9f9b295055"
+    },
+    {
+      "path": "config/assets/max_output_size.wav",
+      "sha256": "d1d1e965b4ae29c060186df519e6f85367e194b015228d30ba10be84c582fd0c"
+    },
+    {
+      "path": "config/assets/tts_notify.mp3",
+      "sha256": "7cb95c481fcaff5a8287adac7bdb6fe5ab5d37b3257717b31b20de62e7133fff"
+    },
+    {
+      "path": "config/assets/wakeup_words.wav",
+      "sha256": "db1b8843929b84d58fcb0b159d6cef8e59bee659129fc5a479593cdd86ed0dcb"
+    },
+    {
+      "path": "config/assets/wakeup_words_short.wav",
+      "sha256": "6d519ba1e01e1c3f639b5a0663399be096825e8bbd74332c0ee1a0bb27a2892b"
+    },
+    {
+      "path": "config/config_loader.py",
+      "sha256": "85f696f67999a474c4785572fca4deffd801c921cac05943d70623697a2b9a06"
+    },
+    {
+      "path": "config/logger.py",
+      "sha256": "2c6872d1e0511fce77668253e7900e1a869905a468908b6de12ca5378ca100e7"
+    },
+    {
+      "path": "config/manage_api_client.py",
+      "sha256": "52ed6d6961f55aa10ffdcdcf4e8b7f931205f145b2c7f7fb92056a9aad6e5fbb"
+    },
+    {
+      "path": "config/settings.py",
+      "sha256": "bfc36f44ba9374b7f11f5224036ef9a7797979268a2ccd47fafb3b81ddf0560e"
+    },
+    {
+      "path": "config_from_api.yaml",
+      "sha256": "502d2516aae0fe17b5666abc022c41cce269d9721fa22dbc884f4bbdc46a2e81"
+    },
+    {
+      "path": "core/api/base_handler.py",
+      "sha256": "4ce8fab28a94c830d3bc507b905f19d05c6dc76dc3e5441e43b1a216dbc3a794"
+    },
+    {
+      "path": "core/api/ota_handler.py",
+      "sha256": "98e39597a77769cb8c48a95325a5790232231252d0805813a452cfec6ac84096"
+    },
+    {
+      "path": "core/api/vision_handler.py",
+      "sha256": "f71d48cee2e954aef3907631c424c48f12973658db192f4aa5af28181d3c68c6"
+    },
+    {
+      "path": "core/auth.py",
+      "sha256": "44e4b1ccee23cd9f09bc6248cb71fbaaf1f845c0fe2f5b0e9f391b86d5c2e741"
+    },
+    {
+      "path": "core/connection.py",
+      "sha256": "ddaed2dd1f2c7beb4b0b39349be6bac1611c2aa1caa3663e793864cd2bfcbf86"
+    },
+    {
+      "path": "core/handle/abortHandle.py",
+      "sha256": "d94e22b1c044b5b143d81dc21231bc78d9a3ef3a37342914144a9a0ba8a30119"
+    },
+    {
+      "path": "core/handle/helloHandle.py",
+      "sha256": "32c986ba5b1c7112974b6828596783111dcd28aac4837e46bf5d7579549f50ed"
+    },
+    {
+      "path": "core/handle/intentHandler.py",
+      "sha256": "c226cb79a3b573e06d55a37546b70e13540edac2d541793bc75e4284042b57a8"
+    },
+    {
+      "path": "core/handle/receiveAudioHandle.py",
+      "sha256": "01141bd4de426be4487a9346b62bf0b1559170962d78d4a576186e772cc74071"
+    },
+    {
+      "path": "core/handle/reportHandle.py",
+      "sha256": "348bdc42e20ef12dcb28ae06bcb0b52e73e95f5c2227872dcae6a6a0a4745c2f"
+    },
+    {
+      "path": "core/handle/sendAudioHandle.py",
+      "sha256": "81e70e3e27bc92a6eafc62ac5e73b0b0a12e46a14a7f54ebeff48449d67e931c"
+    },
+    {
+      "path": "core/handle/textHandle.py",
+      "sha256": "a5a1d2db5f233f49aa42b89ba9bf382d80cabbfd8b2fb7bf6bacfd33ddb8290e"
+    },
+    {
+      "path": "core/handle/textHandler/abortMessageHandler.py",
+      "sha256": "b4c3ff19ce1e5dbee15b1e7d4ed2bbeaccfeb60e4ad7241f89f895bea4a87f5b"
+    },
+    {
+      "path": "core/handle/textHandler/helloMessageHandler.py",
+      "sha256": "1d4012ba6e8e9ab6e8f3803ba2af61ab762f0f87228b18ab3696b44adac39dc2"
+    },
+    {
+      "path": "core/handle/textHandler/iotMessageHandler.py",
+      "sha256": "416a06f83f601d1692a453af61d6edd10fc6857032ccfb0549e4ac17ae2c5289"
+    },
+    {
+      "path": "core/handle/textHandler/listenMessageHandler.py",
+      "sha256": "e9d9b48adbc66485eead6852b09773d910b00f2052fd9207a53f461a5c14e7ec"
+    },
+    {
+      "path": "core/handle/textHandler/mcpMessageHandler.py",
+      "sha256": "c3d0a5975d773436e3cee76e34bdbbb7320041d2691a8c59a8b561e952991328"
+    },
+    {
+      "path": "core/handle/textHandler/pingMessageHandler.py",
+      "sha256": "d3dd40c2c4ed98335c29b2f52962013b5a876605c5831c4b20777836974ad0c4"
+    },
+    {
+      "path": "core/handle/textHandler/serverMessageHandler.py",
+      "sha256": "065e95375b99e87c44b5d17c6dfdb819b67871a30996a4cd21159e8b89f57d79"
+    },
+    {
+      "path": "core/handle/textMessageHandler.py",
+      "sha256": "6e30431fd1ea5f11254130d3edab009bf56d5df8fd8db0786051d429e4d4f2f5"
+    },
+    {
+      "path": "core/handle/textMessageHandlerRegistry.py",
+      "sha256": "fb2e94be5aab81bcb67f4c0da09faa03ce7b9839959326c5171d8e3f01235b0f"
+    },
+    {
+      "path": "core/handle/textMessageProcessor.py",
+      "sha256": "4008145eff6b17d77964137fac04e7e09079bf3dc219f4f8aff270f6ceedb56f"
+    },
+    {
+      "path": "core/handle/textMessageType.py",
+      "sha256": "ac095cabbf7aaccd80828f859abbe018bec80fff2776e3cf61ec843942672756"
+    },
+    {
+      "path": "core/http_server.py",
+      "sha256": "044b136d14c51d7322f75f59d3678e867d5f7f1b1e1fd8241efaffd20ea642ce"
+    },
+    {
+      "path": "core/providers/asr/aliyun.py",
+      "sha256": "a5c3716d6a71e58174d4679d517ebf4fb4de50e6eafea41401beed8eb0691186"
+    },
+    {
+      "path": "core/providers/asr/aliyun_stream.py",
+      "sha256": "8917c9093c5853452628a4bdae43679a7ce19fe5d9c215a80a334a65591b5735"
+    },
+    {
+      "path": "core/providers/asr/aliyunbl_stream.py",
+      "sha256": "a185cc29236ee237a566a2626ad00f952976b0e03786349347ca7f1d814f0393"
+    },
+    {
+      "path": "core/providers/asr/baidu.py",
+      "sha256": "00b80d0a6b6f144d62b0e56f04023cd1237747483dc0bc562368a44ee0dec8f6"
+    },
+    {
+      "path": "core/providers/asr/base.py",
+      "sha256": "61558e5cda9e498ebbcd257d3ad0b531e854e139b2c975dacbfa7afbea553a52"
+    },
+    {
+      "path": "core/providers/asr/doubao.py",
+      "sha256": "a9079fce9d360d59ed2cee5b5fb57432eb143824698eff0a3fdfe13908bf7431"
+    },
+    {
+      "path": "core/providers/asr/doubao_stream.py",
+      "sha256": "979bdc6cc4711b4848f982478ce622a45c490ff2baf3279066441b789871a790"
+    },
+    {
+      "path": "core/providers/asr/dto/dto.py",
+      "sha256": "768eb3e2ce838eda52ff048cd139233d15185baaee874924da601103599641e5"
+    },
+    {
+      "path": "core/providers/asr/fun_local.py",
+      "sha256": "ede939a9f7e14bc5e9f706b8ac20f2ab693ad8be93059787ece4866ee9a5fb60"
+    },
+    {
+      "path": "core/providers/asr/fun_server.py",
+      "sha256": "601990ac791188792a57a285288e9b6ca1585a38c7219b0db566d860c84b64d5"
+    },
+    {
+      "path": "core/providers/asr/openai.py",
+      "sha256": "6fc9ffadf93f5e4ce3b1b5cfd9e1fa1dd6a0a2369d170e8d292bd3c21bca99d3"
+    },
+    {
+      "path": "core/providers/asr/qwen3_asr_flash.py",
+      "sha256": "43533c7b1418ba3ffb863cf562fae370e0579d9ffd1af980bdd30c38e58d2043"
+    },
+    {
+      "path": "core/providers/asr/sherpa_onnx_local.py",
+      "sha256": "0d579cd36f953f9b0d50da075ff45b39f5c352339c4a5f69c4b0f66e9cd38fb5"
+    },
+    {
+      "path": "core/providers/asr/tencent.py",
+      "sha256": "d5fbc75d592cc1b499c62169022915ed8887e7fab0da581312582750ff40ed0e"
+    },
+    {
+      "path": "core/providers/asr/utils.py",
+      "sha256": "9ca993b55184907e2c519136ff4c4f29f0295d69a085bf817ed89debaf2e1ec6"
+    },
+    {
+      "path": "core/providers/asr/vosk.py",
+      "sha256": "e0490050a31bdf12d3c9047df3d2d4c360be46e39408ed5f2f7a1b8e1c0205d0"
+    },
+    {
+      "path": "core/providers/asr/xunfei_stream.py",
+      "sha256": "3cff48cbfdf40967584edc4d6218420dd4aecb8cd33340562ddb6fa559737881"
+    },
+    {
+      "path": "core/providers/intent/base.py",
+      "sha256": "4b343c6b89e24c0137ae184f18eb41d0164a39ee0ac9634e3c793c522d1baa38"
+    },
+    {
+      "path": "core/providers/intent/function_call/function_call.py",
+      "sha256": "1e9cfdee228059dd8d59bd2bbfecb0c4c08316bb25368b2ec98cb2256eb3a5c8"
+    },
+    {
+      "path": "core/providers/intent/intent_llm/intent_llm.py",
+      "sha256": "11e6d0247f1668b12a4c97072b4edffc49cf549d4dbde4b662ebda0c703e519e"
+    },
+    {
+      "path": "core/providers/intent/nointent/nointent.py",
+      "sha256": "650248211340398de0156daff303d66db90081ac874b7108d3330f875c2d6fb9"
+    },
+    {
+      "path": "core/providers/llm/AliBL/AliBL.py",
+      "sha256": "ce6d6985fa610746c44f2b3cff1862bb0b9e3a942399c87bdc56ab20180cd901"
+    },
+    {
+      "path": "core/providers/llm/base.py",
+      "sha256": "21824dadee325fb9e775a7fa4c02575937b602cade40fe765a38f224d504954a"
+    },
+    {
+      "path": "core/providers/llm/coze/coze.py",
+      "sha256": "3900574b8ca40f884f33fafbd6c69a9c1c5a45cb41d172eba4a8f75420aef7d1"
+    },
+    {
+      "path": "core/providers/llm/dify/dify.py",
+      "sha256": "4a72ce7a45b0ab752b6c1bb76d4e3c8d5fd27b27f86fa8e2b8d6c55612484597"
+    },
+    {
+      "path": "core/providers/llm/fastgpt/fastgpt.py",
+      "sha256": "dd0c6802031e4e4880b7ef3a203df29f913e6603abc6ce68deae7b85cf69345f"
+    },
+    {
+      "path": "core/providers/llm/gemini/gemini.py",
+      "sha256": "7b4deaca826b3907324c1f66428677e275957bd510e18ec920b281c6ffad2c93"
+    },
+    {
+      "path": "core/providers/llm/homeassistant/homeassistant.py",
+      "sha256": "0acf279a545207395d4447bc1b49042f8309eb120fe4bb5a8608e59643eadc8f"
+    },
+    {
+      "path": "core/providers/llm/ollama/ollama.py",
+      "sha256": "6a5a0bb92722476434e2f144ac5df1e78c8f51b7c7e8cf7d0ae1dc0d3e8f5f3e"
+    },
+    {
+      "path": "core/providers/llm/openai/openai.py",
+      "sha256": "9451952c62f470d9ab5a5a8ccd75dc99b07a60cb372747696bc7da54aff93eb8"
+    },
+    {
+      "path": "core/providers/llm/system_prompt.py",
+      "sha256": "bf64350d7240b0ecad5612deec7f75ddc855ac2c5d58c693b55d9fca7518e893"
+    },
+    {
+      "path": "core/providers/llm/xinference/xinference.py",
+      "sha256": "a9f866dfa3cd830be1525a29aab6cfc40e87faa901bbda5f0bd44cfd29451c6b"
+    },
+    {
+      "path": "core/providers/memory/base.py",
+      "sha256": "629c72a6ecdbfeafeb696e5b59ea95a84a8a643bf378f9d43d0c079c75b89733"
+    },
+    {
+      "path": "core/providers/memory/mem0ai/mem0ai.py",
+      "sha256": "bbf6922327abf6b204c155eefa0361137124c845dffd9b17d9bdd29ccb9065ac"
+    },
+    {
+      "path": "core/providers/memory/mem_local_short/mem_local_short.py",
+      "sha256": "caa1cbbbb59c32b19d186797938b254753a0ab791a0f925da0f8daa346079ae9"
+    },
+    {
+      "path": "core/providers/memory/mem_report_only/mem_report_only.py",
+      "sha256": "1e25eab14ca996e82885fc06c40a974a4e6d910adb8774c224ce3b0341ea0849"
+    },
+    {
+      "path": "core/providers/memory/nomem/nomem.py",
+      "sha256": "ef1e38d81459e69464dad9b6e06089adcd20fee3c7f1f30a99968d3ba21b810f"
+    },
+    {
+      "path": "core/providers/memory/powermem/powermem.py",
+      "sha256": "c7e144b807fd796b327f0903a69e50cf3634fabed0eb75a28c11d4a040ab6971"
+    },
+    {
+      "path": "core/providers/tools/__init__.py",
+      "sha256": "36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068"
+    },
+    {
+      "path": "core/providers/tools/base/__init__.py",
+      "sha256": "04e13360c8c8bd197a2ff1e5eea73c753538fb764bf791d823497c9370aa2a2b"
+    },
+    {
+      "path": "core/providers/tools/base/tool_executor.py",
+      "sha256": "e7a372a4572452312ddff864b5e45784b576e5d457bfc0fe7b1e114ff9a69e57"
+    },
+    {
+      "path": "core/providers/tools/base/tool_types.py",
+      "sha256": "7f5adb1d40efcc59ecc0f712a9ecb7310d982919faf1ca0dcfa6dc224d0a5fbf"
+    },
+    {
+      "path": "core/providers/tools/device_iot/__init__.py",
+      "sha256": "6539005d5639b45f6645bbf20eb8f716b0152004dff8e005c7b5f29c794e68da"
+    },
+    {
+      "path": "core/providers/tools/device_iot/iot_descriptor.py",
+      "sha256": "5122a02040419109ca4daa201dcf808ff057cf70e1b0fb41b0eeb11aa4517436"
+    },
+    {
+      "path": "core/providers/tools/device_iot/iot_executor.py",
+      "sha256": "1397b0c2d57f1a90dcea6739bb419bf20e5419e7412c3b982c64fe0e5745c34e"
+    },
+    {
+      "path": "core/providers/tools/device_iot/iot_handler.py",
+      "sha256": "1ff753debd0b6cec386b9a68efc4c5c8e8c2ff1857d04c4aa270415150a2c136"
+    },
+    {
+      "path": "core/providers/tools/device_mcp/__init__.py",
+      "sha256": "1177b1f45d1ba4016146d73f9069a984778b036f0643547f3074c93b03dacf3c"
+    },
+    {
+      "path": "core/providers/tools/device_mcp/mcp_client.py",
+      "sha256": "3785262d52b97023c6393911bc22849b1d26d62b47a8c6599942c0fdbf0c11df"
+    },
+    {
+      "path": "core/providers/tools/device_mcp/mcp_executor.py",
+      "sha256": "074dbbc7b5fb85f38e58d62cd0b266d2f71ba72c81a388474f4af48f75825c3a"
+    },
+    {
+      "path": "core/providers/tools/device_mcp/mcp_handler.py",
+      "sha256": "702ebb850131d5911d103046f775074dddd04aa2478ac964682bc6aa00a6276d"
+    },
+    {
+      "path": "core/providers/tools/mcp_endpoint/__init__.py",
+      "sha256": "b553b329cc542fe2f85befe00aa68b99b420b1bac76431027e8183c431582807"
+    },
+    {
+      "path": "core/providers/tools/mcp_endpoint/mcp_endpoint_client.py",
+      "sha256": "7470ac6f38f7b2efc04c86713c83949d1bf06bbe9133606fa3aae87c8b6ce326"
+    },
+    {
+      "path": "core/providers/tools/mcp_endpoint/mcp_endpoint_executor.py",
+      "sha256": "42cc3c9843b40a8247ae8cff03fd25d46cd92da17e3b3da65a63cafaf1f97212"
+    },
+    {
+      "path": "core/providers/tools/mcp_endpoint/mcp_endpoint_handler.py",
+      "sha256": "7e56a254475c89713949eaf0814e7194af7704aebd1474b26b51f9274f7926f9"
+    },
+    {
+      "path": "core/providers/tools/server_mcp/__init__.py",
+      "sha256": "eba11cfd661da2b9d578f9a4ab23b8b641b43200a6fcc4c79a7292b81caa6a4b"
+    },
+    {
+      "path": "core/providers/tools/server_mcp/mcp_client.py",
+      "sha256": "ee73dacee849f5f0c825219f0ca5e7ed82cbfd8e5b024c1559f7c59365320511"
+    },
+    {
+      "path": "core/providers/tools/server_mcp/mcp_executor.py",
+      "sha256": "74d35c55bac98e261547c522e9a85b83eaaca91a2f100d43122bdc650186f404"
+    },
+    {
+      "path": "core/providers/tools/server_mcp/mcp_manager.py",
+      "sha256": "f7d6e711350942e762ba214ae5c2c4b74021a9274a9b98542ad3e5ee4655b3cc"
+    },
+    {
+      "path": "core/providers/tools/server_plugins/__init__.py",
+      "sha256": "03d3d7461354e6cf7aef5ef2fddd50e07ac41d19da3926b9cd9fad80912380b6"
+    },
+    {
+      "path": "core/providers/tools/server_plugins/plugin_executor.py",
+      "sha256": "ae47c5f60caee67ac0e1d34783ddb6901bd4734a6abb6e0f3dd77355708d69d3"
+    },
+    {
+      "path": "core/providers/tools/unified_tool_handler.py",
+      "sha256": "b7c7bfca5ef579a8f9ca319e06432717bbc60c7e4a10d3f173c3514baa5729e3"
+    },
+    {
+      "path": "core/providers/tools/unified_tool_manager.py",
+      "sha256": "236810d3d60a196e852c35639a68d277cc1f710ab5f2bd59f27c16153ab3fa10"
+    },
+    {
+      "path": "core/providers/tts/alibl_stream.py",
+      "sha256": "94740bca785678a92874690631d25765af4bc34c9aefd0654ca228def830b12e"
+    },
+    {
+      "path": "core/providers/tts/aliyun.py",
+      "sha256": "865b59dd7b91966fc9b6de20f032be13b3baab24bb32dd50f98d87a96f2d7d3b"
+    },
+    {
+      "path": "core/providers/tts/aliyun_stream.py",
+      "sha256": "25c9bfdbc8e0e1126c6c6e21a9841b44bc013a0f0f745058879b0b7be758522f"
+    },
+    {
+      "path": "core/providers/tts/base.py",
+      "sha256": "b3b4b05df9cd4cdf73f9631ef3b2494c68954415287bbf0ec3886e4181763142"
+    },
+    {
+      "path": "core/providers/tts/cozecn.py",
+      "sha256": "0f585c1f9204a6bdf040388e6f08f571af2aa082521e32442096b12ef47b8a06"
+    },
+    {
+      "path": "core/providers/tts/custom.py",
+      "sha256": "31b981207841d8fb1d6994ad7f5efef07929ad9a82912ff7b1b85fc1669bbc56"
+    },
+    {
+      "path": "core/providers/tts/default.py",
+      "sha256": "be88e1fa54b56541c17eb6a952327048efb95f3753491f91d462b4a3c0f51543"
+    },
+    {
+      "path": "core/providers/tts/doubao.py",
+      "sha256": "aa77cf808406315b3971d38988a0712d557d644179da957488f8e78cdd2bd669"
+    },
+    {
+      "path": "core/providers/tts/dto/dto.py",
+      "sha256": "4d3d96d71f93c08fbeaa664b24ee8a8b598ee6d0ee9142058ad82b083f0a553a"
+    },
+    {
+      "path": "core/providers/tts/edge.py",
+      "sha256": "5f9fbd9879cc20e00d3a66b31e98dbe3abc69137a01916858d1ae0836a99067c"
+    },
+    {
+      "path": "core/providers/tts/fishspeech.py",
+      "sha256": "fe218ba43ab8c7d8c3705f4b36cc920e3cfce7d92317172f1055022de34807e7"
+    },
+    {
+      "path": "core/providers/tts/gpt_sovits_v2.py",
+      "sha256": "86c65ee7f9264a0884a64cdca0cec68ea7ac40708c23ebdb40cbe78b5cbb8f7d"
+    },
+    {
+      "path": "core/providers/tts/gpt_sovits_v3.py",
+      "sha256": "35f5b2da592ff0a98730be43e0b252906d0617464cc102b85400c2aa1b77ea8b"
+    },
+    {
+      "path": "core/providers/tts/huoshan_double_stream.py",
+      "sha256": "f5103d0dae5767283a5ef8cb74584f1a50903e1e6bdac06a87e6b2c5d4478c4d"
+    },
+    {
+      "path": "core/providers/tts/index_stream.py",
+      "sha256": "294044dd5dbf1ee2f1b07f8708dc0626b51f656259d0c2baf53e659454761801"
+    },
+    {
+      "path": "core/providers/tts/minimax_httpstream.py",
+      "sha256": "1da5e38c96c87cf46940aa35feb1f8334b10a2f77a3c9c07261e19eab0d54cc4"
+    },
+    {
+      "path": "core/providers/tts/openai.py",
+      "sha256": "291de67edb99a0efa761594d56449abd10c192de49af00e71cd34d286c95b630"
+    },
+    {
+      "path": "core/providers/tts/paddle_speech.py",
+      "sha256": "d0d13622bb601811c0050e279391bf3cbec7b9e47e2e7824954618a93e71c202"
+    },
+    {
+      "path": "core/providers/tts/siliconflow.py",
+      "sha256": "5a0016c5d995e0b7de732d426161f61f9e652f2e3f154ba69aa83e226674bd41"
+    },
+    {
+      "path": "core/providers/tts/tencent.py",
+      "sha256": "f150b0aa7adb0172c6db5f4b5ecfccd8938b4c089a77cd601fec2251988d1e24"
+    },
+    {
+      "path": "core/providers/tts/xunfei_stream.py",
+      "sha256": "4ecd7e81cb36e444b7b78f6dfb66f757bdcf60393e8d3dc94b757204f1296711"
+    },
+    {
+      "path": "core/providers/vad/base.py",
+      "sha256": "7e127213ddccc9f9f4d753f1bbafb44d17864de566db942329e802ea6073002a"
+    },
+    {
+      "path": "core/providers/vad/silero.py",
+      "sha256": "b5e717c060c3e0195992fca8f3b23fd494bbc289faed0164cac05bf180af08dd"
+    },
+    {
+      "path": "core/providers/vllm/base.py",
+      "sha256": "34928792699b5572a74a659f54832bd8933edcf8f642e4e0b6e32a21bde91b7f"
+    },
+    {
+      "path": "core/providers/vllm/openai.py",
+      "sha256": "5a2c202207395229726146bc814186ed04dd04aca44575e261734681011b561d"
+    },
+    {
+      "path": "core/utils/asr.py",
+      "sha256": "381126f38165ca6154d3851f1d692322986e8af35957d95e27c8f732b1c34c7b"
+    },
+    {
+      "path": "core/utils/audioRateController.py",
+      "sha256": "175832630ef9eaab71ff86474050fb87204b598d09601829b3af83fee5aaadaa"
+    },
+    {
+      "path": "core/utils/auth.py",
+      "sha256": "b832e46920eff1b1675dd67ce1bcac50f05d8b392d684d3abf13eb2b3399383a"
+    },
+    {
+      "path": "core/utils/cache/config.py",
+      "sha256": "2d6b1db04c32a81628dea0f8ec5d8d1327c4af4e2fc49ff48c9fe36b380605b3"
+    },
+    {
+      "path": "core/utils/cache/manager.py",
+      "sha256": "c5b88caa2935b2d9c3398c25d009cf240e0cfdc13cd2ef67d6be7b85b881c6f2"
+    },
+    {
+      "path": "core/utils/cache/strategies.py",
+      "sha256": "10b17f0875c9ac7d894c123152447be30aa27f7b1e5e1775a10a8b04c7372402"
+    },
+    {
+      "path": "core/utils/context_provider.py",
+      "sha256": "a00b207a85d28cd6906c357a49cfcc018dac3ed38fbd362dcb7116162f2073cf"
+    },
+    {
+      "path": "core/utils/current_time.py",
+      "sha256": "7e83787da00da3967d0a32db164225a257012e408212eec8df9293964f035d62"
+    },
+    {
+      "path": "core/utils/dialogue.py",
+      "sha256": "191022a9595607cfe1f99b20af65a27b046a24d40b5a89c27ea9414bf930c6b4"
+    },
+    {
+      "path": "core/utils/gc_manager.py",
+      "sha256": "b9d71fa0236cb4b9a2dab5d81823a961bd83fb8b5f96e91d22f09697cbf48eed"
+    },
+    {
+      "path": "core/utils/intent.py",
+      "sha256": "9b65e8d81ba5c8ccfdc45fee0fe1ac88c31c03f879d3cbdb6579c498d402fae4"
+    },
+    {
+      "path": "core/utils/llm.py",
+      "sha256": "be0e5d9132c767879710387f897a20a3c57d872dda37a5402eff895b95668e27"
+    },
+    {
+      "path": "core/utils/memory.py",
+      "sha256": "8b7d858c01b6ffce9ff4838947ad49286e647ca1d455889ec98d33494f4a2fe5"
+    },
+    {
+      "path": "core/utils/modules_initialize.py",
+      "sha256": "f3174baf69edafb29485fe8cb83c7d3e265eed868ad1a87ce36db84bb25558d2"
+    },
+    {
+      "path": "core/utils/opus_encoder_utils.py",
+      "sha256": "8394b010f9822c207e59f781f16fda1420e0705a936d8475b0b63417b1a42990"
+    },
+    {
+      "path": "core/utils/output_counter.py",
+      "sha256": "c81cf9b0285488799d791dc2a8b41c204f5ed99e652e7d3287abd323dd625170"
+    },
+    {
+      "path": "core/utils/p3.py",
+      "sha256": "9c16b21fb5bb78ec40d4b61bb1aeb84eb651b80845111cbf8c8cdd5d4a71c37a"
+    },
+    {
+      "path": "core/utils/prompt_manager.py",
+      "sha256": "0dc076a5bfb239fda34b18310ecf6ee8215192257961abf62dd33cc9a2e2eb20"
+    },
+    {
+      "path": "core/utils/textUtils.py",
+      "sha256": "16f0144067b2fb130a656c52170e6acd9f8aed6ced5cf5c819f672e6f574a6c4"
+    },
+    {
+      "path": "core/utils/tts.py",
+      "sha256": "052cfa041ad0c7fcfd3445caeaa4873454cb6c7784c220d524ba64cded747cdc"
+    },
+    {
+      "path": "core/utils/util.py",
+      "sha256": "38387f8f43f729f28f55c0ac754e3222e7e699282f7ee1b18104dc38bab56358"
+    },
+    {
+      "path": "core/utils/vad.py",
+      "sha256": "164db17f7ab6e52233f095fe238edf3cd619718e3633e585e2211293ef2e72a3"
+    },
+    {
+      "path": "core/utils/vllm.py",
+      "sha256": "cd67a661d22d5665b0194fae4940012d799179773a002315ea331d10fd055982"
+    },
+    {
+      "path": "core/utils/voiceprint_provider.py",
+      "sha256": "379fc4857e8b8fb7ef83009149edeb54bb12cb45c85d56b9c30cb75f7b655fdc"
+    },
+    {
+      "path": "core/utils/wakeup_word.py",
+      "sha256": "316e550c601a719998233655ea034bbc4211fb8004ec0b6059bd88b515ba6f38"
+    },
+    {
+      "path": "core/websocket_server.py",
+      "sha256": "5dbb6f43782d1004418f4cfc8ee9108b9c442dbd59afc5d534073390414e3530"
+    },
+    {
+      "path": "docker-compose.yml",
+      "sha256": "1a39568c2691def86a24293531a6a2d6b4feae03805cc1088437f664d028e867"
+    },
+    {
+      "path": "docker-compose_all.yml",
+      "sha256": "bf984df8a7890ed8b0f2d0c403ea8b4e6f9b93a22c64b6d791208283e4c7a8ac"
+    },
+    {
+      "path": "mcp_server_settings.json",
+      "sha256": "2d922963308fb2cdd338c19ba4742f704f91bbce546d9b1c9e5e233e1d09e182"
+    },
+    {
+      "path": "models/SenseVoiceSmall/chn_jpn_yue_eng_ko_spectok.bpe.model",
+      "sha256": "aa87f86064c3730d799ddf7af3c04659151102cba548bce325cf06ba4da4e6a8"
+    },
+    {
+      "path": "models/SenseVoiceSmall/config.yaml",
+      "sha256": "9db6921e149b3e3d677f8fb4a0f6532a5071f62c428cb06dfc98fbe14ec0b33e"
+    },
+    {
+      "path": "models/SenseVoiceSmall/configuration.json",
+      "sha256": "3a7902d478411e8db77a8376d41cb138ee6ce20599c79b9cddf114117cac6878"
+    },
+    {
+      "path": "models/SenseVoiceSmall/demo.py",
+      "sha256": "84ceb09ec04013ff212b99d1b063991cc34af41fae88d3fb32e01e8d867d78e6"
+    },
+    {
+      "path": "models/SenseVoiceSmall/example/en.mp3",
+      "sha256": "f10378336a4e584f3f63799e62f99d5add3c2a401b51d3abe7d3a3a82f255ada"
+    },
+    {
+      "path": "models/SenseVoiceSmall/example/ja.mp3",
+      "sha256": "496dbc43b289e1d0d0cb916df9737450bca56acd8aaca046a7a2472363b1be53"
+    },
+    {
+      "path": "models/SenseVoiceSmall/example/ko.mp3",
+      "sha256": "8612f62db8319a6cb4ab4b1d2039bfc32f174f89611889ddafdeb5c0a6070b5f"
+    },
+    {
+      "path": "models/SenseVoiceSmall/example/yue.mp3",
+      "sha256": "5098eebc13530a66e4eac1f30d3246e65c9cfc4e096665f9d395aca8eff0d181"
+    },
+    {
+      "path": "models/SenseVoiceSmall/example/zh.mp3",
+      "sha256": "0e64de19e4ff9a02e682955c9112f32d2317cfdbb5bc2f3504664044c993f195"
+    },
+    {
+      "path": "models/snakers4_silero-vad/hubconf.py",
+      "sha256": "47d03ab064392959eee9b0cff3e544be3d78e10f6645166adb517c3f07a775eb"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/__init__.py",
+      "sha256": "6800a9a9b796e607a76315aa7e11f3a14b82aaad06a05ce75125845ceff834f7"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/model.py",
+      "sha256": "cd6e7eb8441094872674f1ae9292a9d9a43fb2ca977e9312383be9f11d314adc"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/utils_vad.py",
+      "sha256": "996e956686018372470706882e71683c26b9ebcf80153f3e091b475bd0093929"
+    },
+    {
+      "path": "music/\u4e00\u5ff5\u5343\u5e74_\u56fd\u98ce\u7248.mp3",
+      "sha256": "579eab448e9a3756eaff6bbd843c89df7a03ba82690a5fd9220a3c5476b8e59f"
+    },
+    {
+      "path": "music/\u4e2d\u79cb\u6708.mp3",
+      "sha256": "adc1652e2831c361ca69974bd1c51715e13546e1c1d5324bc3bd88077888a465"
+    },
+    {
+      "path": "music/\u5ec9\u6ce2\u8001\u77e3\uff0c\u5c1a\u80fd\u996d\u5426.mp3",
+      "sha256": "1d64f65a64c8cd6c5ebd58a3b7e7ef012730415ef776c4cb52be918f371b78b3"
+    },
+    {
+      "path": "performance_tester.py",
+      "sha256": "4042a751787c118fdbdaff46f701f46a02e6b92469d6cce5c0b58ab2ac0bcd99"
+    },
+    {
+      "path": "performance_tester/performance_tester_asr.py",
+      "sha256": "75a7f1b480aa08f105596c9d10743b9a8c63d85410cb1574d10153f8c18726d4"
+    },
+    {
+      "path": "performance_tester/performance_tester_llm.py",
+      "sha256": "314df95df064c42e863062224295f055ac5fb63836381d8a7205e951d7d0bd41"
+    },
+    {
+      "path": "performance_tester/performance_tester_stream_asr.py",
+      "sha256": "3ea59d0d0242904c626d33349602a425172ccb925ddad08745b8fc052b0eb8a2"
+    },
+    {
+      "path": "performance_tester/performance_tester_stream_tts.py",
+      "sha256": "42fabfaa5db0cbd396f9494bb5601fdc02f0305d016f937381561c5f4ec57009"
+    },
+    {
+      "path": "performance_tester/performance_tester_tts.py",
+      "sha256": "46d0dbae75e4093c54e843283c528b0b5d72dfc27b262223581d3391380e4b69"
+    },
+    {
+      "path": "performance_tester/performance_tester_vllm.py",
+      "sha256": "f2309065073a31584e7626c457d41946af6c9b4eba2ea4a204f2ea1410d7f656"
+    },
+    {
+      "path": "plugins_func/functions/call_device.py",
+      "sha256": "8cd2b85774c1a3bb2998324d63610ebc38e48b5b3ac0cba4d22e5f384275c0f8"
+    },
+    {
+      "path": "plugins_func/functions/change_role.py",
+      "sha256": "1137981385095fa7d7c14a8be4092d8bc417b5e0cc9c2ede4f2a8b98d91f2a6a"
+    },
+    {
+      "path": "plugins_func/functions/get_news_from_chinanews.py",
+      "sha256": "e9ff9d48f5339da7a275555036a0f3556fc6270bd40ff62c2ea0eef758d215a2"
+    },
+    {
+      "path": "plugins_func/functions/get_news_from_newsnow.py",
+      "sha256": "af3c82efef574ae917e81751204c6519599bc02465659deda66babc29cba627a"
+    },
+    {
+      "path": "plugins_func/functions/get_time.py",
+      "sha256": "ffbff55aae962ba5f568bddfa649feb165ee93bba7b26c96c9ccbc2c18378716"
+    },
+    {
+      "path": "plugins_func/functions/get_weather.py",
+      "sha256": "5fef8038ecead77e1e96ef3f59a175adfd790af7a85d231da0baf881c24ec294"
+    },
+    {
+      "path": "plugins_func/functions/handle_exit_intent.py",
+      "sha256": "59738084d4da45663f734c0efeecad2c968962975b5c71628ff0a3d952658fcf"
+    },
+    {
+      "path": "plugins_func/functions/hass_get_state.py",
+      "sha256": "1461236da2d1aeacbf9e4276a86a22a3cfb573d85ee8c90fbb60969b437c0ae6"
+    },
+    {
+      "path": "plugins_func/functions/hass_init.py",
+      "sha256": "576edc7a5693afa51f0cb0bde8462e7b60fd363d5143dff01462fbfdc22b1056"
+    },
+    {
+      "path": "plugins_func/functions/hass_play_music.py",
+      "sha256": "f0406992e7b601ed3fe34c3a94c598557a8db3594abae4cbace815735e365a3b"
+    },
+    {
+      "path": "plugins_func/functions/hass_set_state.py",
+      "sha256": "b77ee856de53d5ed0d630b59059585d1eed5a20adc991df7fe66acc10952019b"
+    },
+    {
+      "path": "plugins_func/functions/play_music.py",
+      "sha256": "943b89d1e329890d54e6b981918063882363fbbd828c7c7d6d24a59cb105b20c"
+    },
+    {
+      "path": "plugins_func/functions/search_from_ragflow.py",
+      "sha256": "ffb9aaff43a93e713fbfc9279ff05c7bf000a790e9e593047a70c3e2a62194d1"
+    },
+    {
+      "path": "plugins_func/functions/web_search.py",
+      "sha256": "bab5481ca579e968e4bb0061cd60f518228c1c740397b31e1c341c4137f6153d"
+    },
+    {
+      "path": "plugins_func/loadplugins.py",
+      "sha256": "945572819778390c3ed55c720da21416ae3b1ea420fb587792416b70bc882dee"
+    },
+    {
+      "path": "plugins_func/register.py",
+      "sha256": "dc5731ce0bbdc9e4e0443fed8935fd4462373326f201075738ed4e7195db6802"
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "b4b4479d65bb9f5eb08c44387cdaf5c1bafeb3e7a9d33878ef78a3ca54deea85"
+    }
+  ],
+  "schema_version": 1,
+  "upstream": {
+    "archive_sha256": "9e943075db60faf4be8deecd01ecae53ae6bb1a9d7c62d8eaa7fc381fd16d43d",
+    "commit": "8ec585102711516bf214b262f7d87bc04f9597e2",
+    "origin": "https://github.com/xinnan-tech/xiaozhi-esp32-server.git",
+    "source_subtree": "main/xiaozhi-server",
+    "tree": "7b96e40bf6541e9b94bdf7c53de9266e3590464d"
+  }
+}

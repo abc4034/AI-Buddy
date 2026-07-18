@@ -1,0 +1,12 @@
+{
+  "patches": [
+    {
+      "current_sha256": "6c7aa42bde41827347457fbf4b01d8b223af84f8ec6369c5c8350b8efbb79e22",
+      "original_sha256": "afbfbcd58afe3d323474a40f0d6cd08ecb95a7dfefafee7da3999985762fbe17",
+      "path": "config.yaml",
+      "reason": "Blank the upstream shared weather API key because it is unsafe for redistribution in this repository.",
+      "status": "modified"
+    }
+  ],
+  "schema_version": 1
+}
