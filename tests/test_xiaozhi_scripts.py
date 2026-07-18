@@ -1327,8 +1327,18 @@ def test_v05_restore_validates_before_apply_and_restores_through_manifest(tmp_pa
                 f"[System.IO.File]::WriteAllBytes('{audio_path}', [byte[]](1, 2, 3))",
                 "$env:ASR_PROVIDER = 'fixture-asr-after'",
                 "Restore-V05RuntimeBackup -BackupDir $backup.BackupDir | Out-Null",
+                f"$dryRunDotEnvUnchanged = ((Get-Content -Raw -LiteralPath '{fake_repo / '.env'}').Trim() -eq 'DEMO_VALUE=after')",
+                f"$dryRunConfigUnchanged = ((Get-Content -Raw -LiteralPath '{config_path}').Trim() -eq 'selected_module: after')",
+                f"$dryRunAudioUnchanged = ([System.IO.File]::ReadAllBytes('{audio_path}').Count -eq 3)",
+                "$dryRunEnvironmentUnchanged = ($env:ASR_PROVIDER -eq 'fixture-asr-after')",
+                "$dryRunSnapshotCount = @(Get-ChildItem -LiteralPath $backup.BackupDir -Directory -Filter 'pre-restore-*').Count",
                 "Restore-V05RuntimeBackup -BackupDir $backup.BackupDir -Apply -EnvironmentTarget Process | Out-Null",
                 "[pscustomobject]@{",
+                "  DryRunDotEnvUnchanged = $dryRunDotEnvUnchanged",
+                "  DryRunConfigUnchanged = $dryRunConfigUnchanged",
+                "  DryRunAudioUnchanged = $dryRunAudioUnchanged",
+                "  DryRunEnvironmentUnchanged = $dryRunEnvironmentUnchanged",
+                "  DryRunSnapshotCount = $dryRunSnapshotCount",
                 f"  EnvRestored = ($env:ASR_PROVIDER -eq 'fixture-asr-before')",
                 f"  DotEnvRestored = ((Get-Content -Raw -LiteralPath '{fake_repo / '.env'}').Trim() -eq 'DEMO_VALUE=before')",
                 f"  ConfigRestored = ((Get-Content -Raw -LiteralPath '{config_path}').Trim() -eq 'selected_module: before')",
@@ -1341,6 +1351,11 @@ def test_v05_restore_validates_before_apply_and_restores_through_manifest(tmp_pa
     payload = json.loads(result.stdout.splitlines()[-1])
 
     assert payload == {
+        "DryRunDotEnvUnchanged": True,
+        "DryRunConfigUnchanged": True,
+        "DryRunAudioUnchanged": True,
+        "DryRunEnvironmentUnchanged": True,
+        "DryRunSnapshotCount": 0,
         "EnvRestored": True,
         "DotEnvRestored": True,
         "ConfigRestored": True,
@@ -1657,14 +1672,15 @@ def test_v05_restore_revalidates_destination_after_planning_before_write(tmp_pat
 
     fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
     backup_root = fake_repo / "tmp" / "v05-runtime-backup"
-    audio_path = fake_repo / "data" / "gateway_audio" / "session-a" / "audio.wav"
-    session_root = audio_path.parent
+    session_root = fake_repo / "data" / "gateway_audio" / "session-a"
+    audio_path = session_root / "nested" / "audio.wav"
     outside_root = tmp_path / "outside-audio"
-    outside_audio = outside_root / "audio.wav"
+    outside_sentinel = outside_root / "sentinel.txt"
+    outside_nested = outside_root / "nested"
     audio_path.parent.mkdir(parents=True)
     outside_root.mkdir()
     audio_path.write_bytes(b"RIFFbackupWAVE")
-    outside_audio.write_bytes(b"RIFFoutside-currentWAVE")
+    outside_sentinel.write_text("outside-current\n", encoding="utf-8")
 
     result = run_powershell(
         "\n".join(
@@ -1690,8 +1706,10 @@ def test_v05_restore_revalidates_destination_after_planning_before_write(tmp_pat
                 "[pscustomobject]@{",
                 "  RestoreFailed = $restoreFailed",
                 "  RecoveryReported = $recoveryReported",
-                f"  OutsideUnchanged = ([System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes('{outside_audio}')) -eq 'RIFFoutside-currentWAVE')",
+                f"  OutsideSentinelUnchanged = ((Get-Content -Raw -LiteralPath '{outside_sentinel}').Trim() -eq 'outside-current')",
                 f"  OutsideFileCount = @(Get-ChildItem -LiteralPath '{outside_root}' -File -Force).Count",
+                f"  OutsideDirectoryCount = @(Get-ChildItem -LiteralPath '{outside_root}' -Directory -Force).Count",
+                f"  OutsideNestedMissing = (-not (Test-Path -LiteralPath '{outside_nested}'))",
                 "} | ConvertTo-Json -Compress",
                 "}",
             ]
@@ -1703,8 +1721,10 @@ def test_v05_restore_revalidates_destination_after_planning_before_write(tmp_pat
     assert payload == {
         "RestoreFailed": True,
         "RecoveryReported": True,
-        "OutsideUnchanged": True,
+        "OutsideSentinelUnchanged": True,
         "OutsideFileCount": 1,
+        "OutsideDirectoryCount": 0,
+        "OutsideNestedMissing": True,
     }
 
 
@@ -1881,6 +1901,109 @@ def test_v05_restore_recovers_files_and_process_environment_after_late_write_fai
         "ProviderRecovered": True,
         "UrlRecovered": True,
         "RecoveryWritesOccurred": True,
+    }
+
+
+def test_v05_user_scope_restore_and_late_failure_recovery_preserve_machine_state(tmp_path: Path):
+    if os.name != "nt":
+        pytest.skip("User environment scope is Windows-specific")
+
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    backup_root = fake_repo / "tmp" / "v05-runtime-backup"
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                "$names = @(",
+                "  'ASR_PROVIDER', 'ASR_HTTP_URL', 'ASR_MODEL', 'ASR_API_KEY', 'ASR_TIMEOUT_SECONDS',",
+                "  'TTS_PROVIDER', 'TTS_HTTP_URL', 'TTS_MODEL', 'TTS_API_KEY',",
+                "  'TTS_VOICE', 'TTS_LANGUAGE', 'TTS_TIMEOUT_SECONDS'",
+                ")",
+                "$originalUser = @{}",
+                "foreach ($name in $names) {",
+                "  $originalUser[$name] = [System.Environment]::GetEnvironmentVariable($name, 'User')",
+                "}",
+                "$recordedValueRestored = $false",
+                "$absentValueCleared = $false",
+                "$lateRestoreFailed = $false",
+                "$recoveryReported = $false",
+                "$providerRecovered = $false",
+                "$urlRecovered = $false",
+                "$recoveryWritesOccurred = $false",
+                "try {",
+                "  foreach ($name in $names) {",
+                "    [System.Environment]::SetEnvironmentVariable($name, $null, 'User')",
+                "  }",
+                "  [System.Environment]::SetEnvironmentVariable('ASR_PROVIDER', 'fixture-user-backup-provider', 'User')",
+                "  [System.Environment]::SetEnvironmentVariable('ASR_HTTP_URL', 'fixture-user-backup-url', 'User')",
+                f"  $backup = New-V05RuntimeBackup -BackupRoot '{backup_root}'",
+                "  [System.Environment]::SetEnvironmentVariable('ASR_PROVIDER', 'fixture-user-before-restore-provider', 'User')",
+                "  [System.Environment]::SetEnvironmentVariable('ASR_HTTP_URL', 'fixture-user-before-restore-url', 'User')",
+                "  [System.Environment]::SetEnvironmentVariable('TTS_MODEL', 'fixture-user-value-to-clear', 'User')",
+                "  Restore-V05RuntimeBackup -BackupDir $backup.BackupDir -Apply -EnvironmentTarget User | Out-Null",
+                "  $recordedValueRestored = ([System.Environment]::GetEnvironmentVariable('ASR_PROVIDER', 'User') -eq 'fixture-user-backup-provider')",
+                "  $absentValueCleared = ($null -eq [System.Environment]::GetEnvironmentVariable('TTS_MODEL', 'User'))",
+                "  [System.Environment]::SetEnvironmentVariable('ASR_PROVIDER', 'fixture-user-pre-recovery-provider', 'User')",
+                "  [System.Environment]::SetEnvironmentVariable('ASR_HTTP_URL', 'fixture-user-pre-recovery-url', 'User')",
+                "  $script:EnvironmentWriteAttempts = 0",
+                "  function Set-V05EnvironmentVariable {",
+                "    param(",
+                "      [Parameter(Mandatory = $true)][string]$Name,",
+                "      [AllowNull()][string]$Value,",
+                "      [Parameter(Mandatory = $true)][ValidateSet('Process', 'User')][string]$EnvironmentTarget",
+                "    )",
+                "    $script:EnvironmentWriteAttempts += 1",
+                "    if ($script:EnvironmentWriteAttempts -eq 3) { throw 'injected user environment write failure' }",
+                "    [System.Environment]::SetEnvironmentVariable($Name, $Value, $EnvironmentTarget)",
+                "  }",
+                "  try {",
+                "    Restore-V05RuntimeBackup -BackupDir $backup.BackupDir -Apply -EnvironmentTarget User | Out-Null",
+                "  }",
+                "  catch {",
+                "    $lateRestoreFailed = $true",
+                "    $recoveryReported = $_.Exception.Message -like '*pre-restore state was recovered*'",
+                "  }",
+                "  $providerRecovered = ([System.Environment]::GetEnvironmentVariable('ASR_PROVIDER', 'User') -eq 'fixture-user-pre-recovery-provider')",
+                "  $urlRecovered = ([System.Environment]::GetEnvironmentVariable('ASR_HTTP_URL', 'User') -eq 'fixture-user-pre-recovery-url')",
+                "  $recoveryWritesOccurred = ($script:EnvironmentWriteAttempts -gt 3)",
+                "}",
+                "finally {",
+                "  foreach ($name in $names) {",
+                "    [System.Environment]::SetEnvironmentVariable($name, $originalUser[$name], 'User')",
+                "  }",
+                "}",
+                "$originalUserStateRestored = $true",
+                "foreach ($name in $names) {",
+                "  if ([System.Environment]::GetEnvironmentVariable($name, 'User') -cne $originalUser[$name]) {",
+                "    $originalUserStateRestored = $false",
+                "  }",
+                "}",
+                "[pscustomobject]@{",
+                "  RecordedValueRestored = $recordedValueRestored",
+                "  AbsentValueCleared = $absentValueCleared",
+                "  LateRestoreFailed = $lateRestoreFailed",
+                "  RecoveryReported = $recoveryReported",
+                "  ProviderRecovered = $providerRecovered",
+                "  UrlRecovered = $urlRecovered",
+                "  RecoveryWritesOccurred = $recoveryWritesOccurred",
+                "  OriginalUserStateRestored = $originalUserStateRestored",
+                "} | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+
+    assert payload == {
+        "RecordedValueRestored": True,
+        "AbsentValueCleared": True,
+        "LateRestoreFailed": True,
+        "RecoveryReported": True,
+        "ProviderRecovered": True,
+        "UrlRecovered": True,
+        "RecoveryWritesOccurred": True,
+        "OriginalUserStateRestored": True,
     }
 
 
@@ -2147,6 +2270,68 @@ def test_v05_staged_secret_scanner_rejects_mixed_powershell_fixture_assignments(
     path.parent.mkdir(parents=True)
     path.write_text(
         f"$env:{first_name} = '{approved_value}'; $env:{second_name} = '{rejected_value}'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "add", relative_path], cwd=repository, check=True)
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                f"Invoke-StagedSecretScan -AllowedTestFixturePath '{relative_path}'",
+                "}",
+            ]
+        ),
+        cwd=repository,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert approved_value not in combined_output(result)
+    assert rejected_value not in combined_output(result)
+
+
+def test_v05_staged_secret_scanner_rejects_indexed_python_environment_assignments_without_echoing_values(
+    tmp_path: Path,
+):
+    script_path = SCRIPTS_DIR / "scan_staged_secrets.ps1"
+    assignment_name = "ASR_API" + "_KEY"
+    synthetic_value = "fixture-" + "python-sensitive-material"
+    repository = tmp_path / "python-assignment"
+    relative_path = "runtime/config.py"
+    path = repository / relative_path
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        f'os.environ["{assignment_name}"] = "{synthetic_value}"\n', encoding="utf-8"
+    )
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "add", relative_path], cwd=repository, check=True)
+
+    result = run_powershell(
+        "\n".join(["& {", f". '{script_path}'", "Invoke-StagedSecretScan", "}"]),
+        cwd=repository,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert synthetic_value not in combined_output(result)
+
+
+def test_v05_staged_secret_scanner_rejects_mixed_indexed_python_fixture_assignments(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "scan_staged_secrets.ps1"
+    approved_value = "sk-" + "test-approved-python"
+    rejected_value = "fixture-" + "python-sensitive-material"
+    first_name = "ASR_API" + "_KEY"
+    second_name = "TTS_API" + "_KEY"
+    repository = tmp_path / "mixed-python-fixture"
+    relative_path = "tests/fixtures/secret-scan/python.fixture"
+    path = repository / relative_path
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        f"os.environ['{first_name}'] = '{approved_value}'; "
+        f'os.environ["{second_name}"] = "{rejected_value}"\n',
         encoding="utf-8",
     )
     subprocess.run(["git", "init", "-q"], cwd=repository, check=True)

@@ -455,6 +455,7 @@ function Restore-V05FileState {
   }
 
   $parent = Split-Path -Parent $State.Destination
+  Assert-V05NoDestinationReparsePoint -RepositoryRoot $RepositoryRoot -Destination $State.Destination
   New-Item -ItemType Directory -Force -Path $parent | Out-Null
   $temporary = Join-Path $parent ("." + [System.IO.Path]::GetFileName($State.Destination) + ".v05-recovery-" + [guid]::NewGuid().ToString("N") + ".tmp")
   try {
@@ -512,6 +513,7 @@ function Restore-V05RuntimeBackup {
     Invoke-V05BeforeRestoreWrite -Plan $plan
     foreach ($action in $plan.FileActions) {
       $parent = Split-Path -Parent $action.Destination
+      Assert-V05NoDestinationReparsePoint -RepositoryRoot $repositoryRoot -Destination $action.Destination
       New-Item -ItemType Directory -Force -Path $parent | Out-Null
       $temporary = Join-Path $parent ("." + [System.IO.Path]::GetFileName($action.Destination) + ".v05-restore-" + [guid]::NewGuid().ToString("N") + ".tmp")
       Assert-V05NoDestinationReparsePoint -RepositoryRoot $repositoryRoot -Destination $action.Destination
