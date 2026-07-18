@@ -62,8 +62,13 @@ async def load_config():
     default_config = read_config(default_config_path)
     custom_config = read_config(custom_config_path)
 
-    if fault_config_path and custom_config.get("manager-api", {}).get("url"):
-        raise ValueError("Fault configuration manager-api.url must be empty.")
+    if fault_config_path:
+        if custom_config.get("buddy_mode") is not True:
+            raise ValueError("Fault configuration requires buddy_mode: true.")
+        if custom_config.get("fault_test_mode") is not True:
+            raise ValueError("Fault configuration requires fault_test_mode: true.")
+        if custom_config.get("manager-api", {}).get("url"):
+            raise ValueError("Fault configuration manager-api.url must be empty.")
 
     from core.buddy.config_contract import validate_effective_config, validate_local_buddy_config
 

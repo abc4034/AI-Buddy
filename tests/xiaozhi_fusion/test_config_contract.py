@@ -132,6 +132,8 @@ def test_fault_effective_config_requires_the_complete_loopback_gate(monkeypatch,
         (lambda config: config.update(fault_test_mode=False), "fault_test_mode"),
         (lambda config: config["server"].update(ip="192.168.1.2"), "loopback"),
         (lambda config: config["server"].update(port=8000), "production"),
+        (lambda config: config["server"].pop("port"), "port"),
+        (lambda config: config["server"].pop("http_port"), "http_port"),
         (lambda config: config["LLM"]["BuddyCoreLLM"].update(base_url="http://192.168.1.2:18010"), "loopback"),
     ],
 )
@@ -178,6 +180,43 @@ def test_fault_loader_rejects_manager_url_before_remote_fetch(monkeypatch, tmp_p
 
     with pytest.raises(ValueError, match="manager-api.url"):
         asyncio.run(config_loader.load_config())
+
+
+def test_fault_loader_rejects_a_non_buddy_override(monkeypatch, tmp_path):
+    approved = tmp_path / "tmp" / "fault-config"
+    approved.mkdir(parents=True)
+    config_path = approved / "fault.yaml"
+    config_path.write_text("buddy_mode: false\nfault_test_mode: false\n", encoding="utf-8")
+    monkeypatch.setenv("BUDDY_FAULT_TEST_MODE", "1")
+    monkeypatch.setenv("BUDDY_XIAOZHI_CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_loader, "get_project_dir", lambda: str(tmp_path / "xiaozhi_server") + "/")
+    monkeypatch.setattr(
+        config_loader,
+        "read_config",
+        lambda path: yaml.safe_load(config_path.read_text()) if path == str(config_path) else {},
+    )
+    from core.utils.cache.manager import CacheType, cache_manager
+
+    monkeypatch.setattr(cache_manager, "get", lambda *_: None)
+    monkeypatch.setattr(cache_manager, "set", lambda *_: None)
+
+    with pytest.raises(ValueError, match="buddy_mode"):
+        asyncio.run(config_loader.load_config())
+
+
+def test_fault_process_allows_the_validated_alternate_buddy_core_url(monkeypatch, tmp_path):
+    approved = tmp_path / "tmp" / "fault-config"
+    approved.mkdir(parents=True)
+    config_path = approved / "fault.yaml"
+    config_path.write_text("fault_test_mode: true\n", encoding="utf-8")
+    monkeypatch.setenv("BUDDY_FAULT_TEST_MODE", "1")
+    monkeypatch.setenv("BUDDY_XIAOZHI_CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_loader, "get_project_dir", lambda: str(tmp_path / "xiaozhi_server") + "/")
+    from core.providers.llm.buddy_core.buddy_core import LLMProvider
+
+    provider = LLMProvider({"base_url": "http://127.0.0.1:18010", "timeout_seconds": 1})
+
+    assert provider.base_url == "http://127.0.0.1:18010"
 
 
 def test_config_renderer_enables_buddy_ownership_overlay():

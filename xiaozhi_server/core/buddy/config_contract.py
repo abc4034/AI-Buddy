@@ -27,18 +27,21 @@ def validate_local_buddy_config(config: Mapping[str, Any]) -> None:
 
 def validate_effective_config(config: dict[str, Any]) -> None:
     """Fail closed when a Buddy-mode runtime could bypass Buddy Core ownership."""
+    fault_process = os.environ.get("BUDDY_FAULT_TEST_MODE") == "1"
+    fault_mode = config.get("fault_test_mode") is True
+    if fault_process or fault_mode:
+        if config.get("buddy_mode") is not True:
+            raise ValueError("Fault configuration requires buddy_mode: true.")
+        if not fault_mode:
+            raise ValueError("Fault configuration requires fault_test_mode: true.")
+        _validate_fault_gate(config)
+
     if not config.get("buddy_mode"):
         return
 
     validate_local_buddy_config(config)
     if config.get("read_config_from_api") is not False:
         raise ValueError("Buddy ownership violation: read_config_from_api must be false.")
-
-    fault_mode = config.get("fault_test_mode") is True
-    if not fault_mode and os.environ.get("BUDDY_FAULT_TEST_MODE") == "1":
-        raise ValueError("Fault configuration requires fault_test_mode: true.")
-    if fault_mode:
-        _validate_fault_gate(config)
 
     selected = _mapping(config.get("selected_module"))
     if selected.get("LLM") != "BuddyCoreLLM":
@@ -101,8 +104,8 @@ def _validate_fault_gate(config: Mapping[str, Any]) -> None:
     server = _mapping(config.get("server"))
     if not _is_loopback(server.get("ip")):
         raise ValueError("Fault configuration server must bind to loopback.")
-    if server.get("port") in (8000, "8000") or server.get("http_port") in (8003, "8003"):
-        raise ValueError("Fault configuration cannot use production ports.")
+    _validate_fault_listener_port(server, "port", 8000)
+    _validate_fault_listener_port(server, "http_port", 8003)
 
     selected = _mapping(config.get("selected_module"))
     if selected.get("ASR") != "BuddyFaultASR":
@@ -138,3 +141,31 @@ def _is_loopback_url(value: Any) -> bool:
 def _is_fault_loopback_url(value: Any) -> bool:
     parsed = urlparse(str(value))
     return _is_loopback_url(value) and parsed.port not in {None, 8000, 8003, 8010}
+
+
+def _validate_fault_listener_port(
+    server: Mapping[str, Any], key: str, production_port: int
+) -> None:
+    value = server.get(key)
+    if isinstance(value, bool):
+        raise ValueError(
+            f"Fault configuration server.{key} must be an explicit non-production port."
+        )
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Fault configuration server.{key} must be an explicit non-production port."
+        ) from None
+    if not 1 <= port <= 65535 or port == production_port:
+        raise ValueError(f"Fault configuration server.{key} cannot use a production port.")
+
+
+def is_approved_fault_provider_url(value: Any) -> bool:
+    """Allow an alternate provider URL only inside the approved fault-test process."""
+    if os.environ.get("BUDDY_FAULT_TEST_MODE") != "1" or not _is_fault_loopback_url(value):
+        return False
+
+    from config.config_loader import get_fault_config_path
+
+    return get_fault_config_path() is not None

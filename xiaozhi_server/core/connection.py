@@ -1239,8 +1239,6 @@ class ConnectionHandler:
             return
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM stream processing error: {e}")
-            if self.config.get("buddy_mode"):
-                self.notify_provider_failure("buddy", current_sentence_id, None, "buddy_failed")
             return
         # 处理function call
         if tool_call_flag:

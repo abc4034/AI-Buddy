@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import deque
 from datetime import datetime, timezone
 from threading import RLock
@@ -76,7 +77,9 @@ def _safe_payload(payload: Any) -> dict[str, Any] | None:
     for key, value in payload.items():
         if not isinstance(key, str) or _is_sensitive_key(key):
             continue
-        if value is None or isinstance(value, (str, int, float, bool)):
+        if value is None or isinstance(value, (str, int, bool)):
+            result[key] = value
+        elif isinstance(value, float) and math.isfinite(value):
             result[key] = value
     return result
 

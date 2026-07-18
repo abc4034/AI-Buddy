@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from core.buddy.config_contract import BUDDY_CORE_BASE_URL
+from core.buddy.config_contract import BUDDY_CORE_BASE_URL, is_approved_fault_provider_url
 from core.buddy.provider_errors import BuddyProviderFailure
 from core.buddy.session_context import get_context
 from core.providers.llm.base import LLMProviderBase
@@ -16,7 +16,9 @@ class LLMProvider(LLMProviderBase):
     def __init__(self, config: dict[str, Any]):
         self.base_url = str(config.get("base_url") or "").rstrip("/")
         self.timeout_seconds = float(config.get("timeout_seconds", 30))
-        if self.base_url != BUDDY_CORE_BASE_URL:
+        if self.base_url != BUDDY_CORE_BASE_URL and not is_approved_fault_provider_url(
+            self.base_url
+        ):
             raise ValueError(f"Buddy Core LLM requires base_url {BUDDY_CORE_BASE_URL}.")
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("Buddy Core LLM requires a positive timeout_seconds.")

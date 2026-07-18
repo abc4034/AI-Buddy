@@ -47,3 +47,12 @@ def test_registry_rejects_unknown_events_and_debug_failures_are_best_effort(monk
     monkeypatch.setattr(diagnostics, "_registry", registry)
     monkeypatch.setattr(registry, "record_event", lambda *_: (_ for _ in ()).throw(RuntimeError("debug down")))
     diagnostics.record_event("session", "listen", {"count": 1})
+
+
+def test_registry_rejects_non_finite_float_payloads():
+    registry = diagnostics.DiagnosticsRegistry()
+
+    registry.record_event("session", "listen", {"latency": float("nan"), "count": 1})
+
+    payload = registry.session_summaries()[0]["events"][0]["payload"]
+    assert payload == {"count": 1}

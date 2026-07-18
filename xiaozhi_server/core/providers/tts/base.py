@@ -127,7 +127,7 @@ class TTSProviderBase(ABC):
     def handle_audio_file(self, file_audio: bytes, text):
         self.before_stop_play_files.append((file_audio, text))
 
-    def to_tts_stream(self, text, opus_handler: Callable[[bytes], None] = None) -> None:
+    def to_tts_stream(self, text, opus_handler: Callable[[bytes], None] = None) -> bool:
         # 保留原始文本用于显示/上报
         original_text = text
         text = MarkdownCleaner.clean_markdown(text)
@@ -168,7 +168,8 @@ class TTSProviderBase(ABC):
                     f"语音生成失败: {original_text}，请检查网络或服务是否正常"
                 )
                 self._notify_tts_failure("tts_failed")
-            return None
+                return False
+            return True
         else:
             tmp_file = self.generate_filename()
             try:
@@ -193,13 +194,14 @@ class TTSProviderBase(ABC):
                         f"语音生成失败: {original_text}，请检查网络或服务是否正常"
                     )
                     self._notify_tts_failure("tts_failed")
-                    return None
+                    return False
                 self.tts_audio_queue.put((SentenceType.FIRST, None, original_text, getattr(self, 'current_sentence_id', None)))
                 self._process_audio_file_stream(tmp_file, callback=opus_handler)
+                return True
             except Exception as e:
                 logger.bind(tag=TAG).error(f"Failed to generate TTS file: {e}")
                 self._notify_tts_failure(_tts_failure_code(e))
-                return None
+                return False
     
     def to_tts(self, text):
         # 保留原始文本用于日志/显示
@@ -397,16 +399,19 @@ class TTSProviderBase(ABC):
                     self.tts_text_buff.append(message.content_detail)
                     segment_text = self._get_segment_text()
                     if segment_text:
-                        self.to_tts_stream(segment_text, opus_handler=self.handle_opus)
+                        if self.to_tts_stream(segment_text, opus_handler=self.handle_opus) is False:
+                            continue
                 elif ContentType.FILE == message.content_type:
-                    self._process_remaining_text_stream(opus_handler=self.handle_opus)
+                    if self._process_remaining_text_stream(opus_handler=self.handle_opus) is False:
+                        continue
                     tts_file = message.content_file
                     if tts_file and os.path.exists(tts_file):
                         self._process_audio_file_stream(
                             tts_file, callback=self.handle_opus
                         )
                 if message.sentence_type == SentenceType.LAST:
-                    self._process_remaining_text_stream(opus_handler=self.handle_opus)
+                    if self._process_remaining_text_stream(opus_handler=self.handle_opus) is False:
+                        continue
                     self.tts_audio_queue.put(
                         (message.sentence_type, [], message.content_detail, message.sentence_id)
                     )
@@ -582,10 +587,11 @@ class TTSProviderBase(ABC):
         if remaining_text:
             segment_text = textUtils.get_string_no_punctuation_or_emoji(remaining_text)
             if segment_text:
-                self.to_tts_stream(segment_text, opus_handler=opus_handler)
-                self.processed_chars += len(full_text)
-                return True
-        return False
+                succeeded = self.to_tts_stream(segment_text, opus_handler=opus_handler)
+                if succeeded:
+                    self.processed_chars = len(full_text)
+                return succeeded
+        return None
 
     def _apply_percentage_params(self, config):
         """根据子类定义的 TTS_PARAM_CONFIG 批量应用百分比参数"""

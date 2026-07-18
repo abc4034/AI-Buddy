@@ -15,14 +15,14 @@
       "status": "modified"
     },
     {
-      "current_sha256": "ce262ffae6a42965b65520f20cce96c3ef080766dd15ed88675bb522ef6f4393",
+      "current_sha256": "57c87e4d766f136710461898871105b0d7bdfdcf47333062be548f1806a46ae9",
       "original_sha256": "85f696f67999a474c4785572fca4deffd801c921cac05943d70623697a2b9a06",
       "path": "config/config_loader.py",
       "reason": "Validate Buddy local and merged configuration before remote selection, directory setup, or cache reuse.",
       "status": "modified"
     },
     {
-      "current_sha256": "4f1d6f390990e35d7959724854b516c4841042586d2a33a2ff150533c83ad23f",
+      "current_sha256": "fba318a34666334d4611164ab68c937979de7426442d8f808aea13f9ca7657a8",
       "original_sha256": "ddaed2dd1f2c7beb4b0b39349be6bac1611c2aa1caa3663e793864cd2bfcbf86",
       "path": "core/connection.py",
       "reason": "Register and remove immutable Buddy session identity, preserve invocation-local dialogue snapshots, and bypass upstream tools and manager title persistence in Buddy mode.",
@@ -78,7 +78,7 @@
       "status": "modified"
     },
     {
-      "current_sha256": "ae7835565b2e92d56f5f05c922df5d77d35b05770f011902e375eee7838fd972",
+      "current_sha256": "e6fe4c71fe8e94c0b4c36d99808969746fb6f1c3dca674e34afc8db1bfa3eea5",
       "original_sha256": "b3b4b05df9cd4cdf73f9631ef3b2494c68954415287bbf0ec3886e4181763142",
       "path": "core/providers/tts/base.py",
       "reason": "Notify the connection lifecycle hook only after final native TTS retry exhaustion or the existing worker catch, without duplicating queue or playback control.",
@@ -99,14 +99,14 @@
       "status": "added"
     },
     {
-      "current_sha256": "d601785ecd5391200949e8039bb2f603014997cea674f35ff6758678c2f6e5ff",
+      "current_sha256": "ef6de0645a15d177b7276f049147b84395a0d0bd22cf366c4df3ad29aac4f146",
       "original_sha256": null,
       "path": "core/buddy/config_contract.py",
       "reason": "Validate the Buddy production ownership contract after configuration merge, including the actual context-provider, voiceprint, and neutral-prompt runtime keys, and reject local remote-manager settings before any remote fetch.",
       "status": "added"
     },
     {
-      "current_sha256": "1fc141c8e64320b6e5676f48725c726b016d3658f20c187fdd4f10c0c230c699",
+      "current_sha256": "c49a141e8ce4b76763da05b0f4c7955d9a5e8cc9d9f6b18a929413eb2d46501e",
       "original_sha256": null,
       "path": "core/buddy/diagnostics.py",
       "reason": "Provide a bounded, redacted in-process lifecycle registry for XiaoZhi's existing SimpleHttpServer debug endpoints without IPC or speech queues.",
@@ -148,7 +148,7 @@
       "status": "added"
     },
     {
-      "current_sha256": "d97379cf0ea21cdb8958ac7a8990ae49ffb95f5ab7a49607e9d36e3cabdc90a1",
+      "current_sha256": "62d41ef0746efa401f0d0ad6ef07d514385433a3481a8113bfe5562d879c39e7",
       "original_sha256": null,
       "path": "core/providers/llm/buddy_core/buddy_core.py",
       "reason": "Route a current user turn with immutable connection metadata to the local Buddy Core OpenAI-compatible endpoint.",

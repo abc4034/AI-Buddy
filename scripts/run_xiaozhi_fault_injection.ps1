@@ -10,6 +10,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $faultDirectory = Join-Path $repoRoot "tmp\fault-config"
 $faultConfig = Join-Path $faultDirectory "fault-config.yaml"
 $serverProcess = $null
+$cleanupError = $null
 
 New-Item -ItemType Directory -Force -Path $faultDirectory | Out-Null
 @"
@@ -35,7 +36,11 @@ prompt_template: buddy-neutral-prompt.txt
 "@ | Set-Content -Encoding utf8 -Path $faultConfig
 
 try {
-    $serverProcess = Start-Process -FilePath "conda" -ArgumentList @("run", "-n", "xiaozhi-env", "python", "tests/fixtures/fault_provider_server.py", "--port", $FaultPort, "--mode", $Mode) -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden
+    $pythonExe = (& conda run -n xiaozhi-env python -c "import sys; print(sys.executable)" | Select-Object -Last 1).Trim()
+    if (-not $pythonExe -or -not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
+        throw "Could not resolve the xiaozhi-env Python executable."
+    }
+    $serverProcess = Start-Process -FilePath $pythonExe -ArgumentList @("tests/fixtures/fault_provider_server.py", "--port", $FaultPort, "--mode", $Mode) -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = "conda"
     $startInfo.WorkingDirectory = $repoRoot
@@ -55,6 +60,15 @@ finally {
     if ($serverProcess -and -not $serverProcess.HasExited) {
         Stop-Process -Id $serverProcess.Id -Force
     }
+    if ($serverProcess) {
+        if (-not $serverProcess.WaitForExit(5000)) {
+            $cleanupError = "Fault provider process did not exit after cleanup."
+        }
+        $serverProcess.Dispose()
+    }
     Remove-Item Env:BUDDY_FAULT_TEST_MODE -ErrorAction SilentlyContinue
     Remove-Item Env:BUDDY_XIAOZHI_CONFIG_PATH -ErrorAction SilentlyContinue
+    if ($cleanupError) {
+        throw $cleanupError
+    }
 }
