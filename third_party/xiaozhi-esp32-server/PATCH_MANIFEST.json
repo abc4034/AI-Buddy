@@ -6,6 +6,34 @@
       "path": "config.yaml",
       "reason": "Blank the upstream shared weather API key because it is unsafe for redistribution in this repository.",
       "status": "modified"
+    },
+    {
+      "current_sha256": "4cc9dd733a78af7e00a772457a2541c8721a4ed299c28a04ddea797edc108eb0",
+      "original_sha256": "43533c7b1418ba3ffb863cf562fae370e0579d9ffd1af980bdd30c38e58d2043",
+      "path": "core/providers/asr/qwen3_asr_flash.py",
+      "reason": "Preserve native Qwen provider failures as typed outcomes and pass configured endpoint and timeout to the DashScope SDK compatibility gate.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "1a57a22f742f8fe72ac1d00aab2194791d6ee48f3367f6795576240ea1a23a3a",
+      "original_sha256": null,
+      "path": "core/buddy/__init__.py",
+      "reason": "Add the minimal Buddy integration package required to keep Task 4 provider failures separate from valid silence.",
+      "status": "added"
+    },
+    {
+      "current_sha256": "14acb3a002509a549b176be03e15b9201f3cdf3f37fd0bb544ecd7212273b8af",
+      "original_sha256": null,
+      "path": "core/buddy/provider_errors.py",
+      "reason": "Define typed public ASR provider failures so upstream ASR errors are not converted to empty recognition.",
+      "status": "added"
+    },
+    {
+      "current_sha256": "a19b36d259bdbbb3c9978ae988a2ee3e73d7c091a0c6c992711fd4fc0659a883",
+      "original_sha256": null,
+      "path": "core/providers/asr/buddy_qwen.py",
+      "reason": "Add the compatibility-authorized Qwen chat-completions ASR provider for the configured endpoint after native DashScope returned HTTP 404.",
+      "status": "added"
     }
   ],
   "schema_version": 1

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import json
+import os
 from pathlib import Path
 from string import Template
 
@@ -11,6 +13,13 @@ LAN_NETWORKS = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
+)
+ASR_ENVIRONMENT_NAMES = (
+    "ASR_PROVIDER",
+    "ASR_HTTP_URL",
+    "ASR_MODEL",
+    "ASR_API_KEY",
+    "ASR_TIMEOUT_SECONDS",
 )
 
 
@@ -33,10 +42,69 @@ def validate_host_ip(host_ip: str) -> str:
     return str(ip)
 
 
-def render_config(host_ip: str) -> str:
+def get_asr_environment(
+    *, process_environment: dict[str, str] | None = None, user_environment: dict[str, str] | None = None
+) -> dict[str, str]:
+    process_environment = process_environment if process_environment is not None else os.environ
+    if user_environment is None:
+        user_environment = {
+            name: os.environ.get(name, "")
+            for name in ASR_ENVIRONMENT_NAMES
+        }
+        if os.name == "nt":
+            import winreg
+
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                    for name in ASR_ENVIRONMENT_NAMES:
+                        try:
+                            user_environment[name] = winreg.QueryValueEx(key, name)[0]
+                        except FileNotFoundError:
+                            continue
+            except OSError:
+                pass
+
+    return {
+        name: str(process_environment.get(name) or user_environment.get(name) or "").strip()
+        for name in ASR_ENVIRONMENT_NAMES
+    }
+
+
+def validate_asr_environment(environment: dict[str, str]) -> dict[str, str]:
+    required = ("ASR_PROVIDER", "ASR_HTTP_URL", "ASR_MODEL", "ASR_API_KEY")
+    missing = [name for name in required if not environment.get(name)]
+    try:
+        timeout = float(environment.get("ASR_TIMEOUT_SECONDS", ""))
+    except ValueError:
+        timeout = 0
+    if missing or timeout <= 0:
+        requirements = ", ".join((*required, "a positive ASR_TIMEOUT_SECONDS"))
+        raise ValueError(f"ASR live mode requires {requirements}.")
+
+    validated = dict(environment)
+    validated["ASR_TIMEOUT_SECONDS"] = format(timeout, "g")
+    return validated
+
+
+def render_config(
+    host_ip: str,
+    *,
+    process_environment: dict[str, str] | None = None,
+    user_environment: dict[str, str] | None = None,
+) -> str:
     safe_ip = validate_host_ip(host_ip)
+    asr_environment = validate_asr_environment(
+        get_asr_environment(
+            process_environment=process_environment,
+            user_environment=user_environment,
+        )
+    )
     template = Template(TEMPLATE_PATH.read_text(encoding="utf-8"))
-    return template.substitute(HOST_IP=safe_ip)
+    substitutions = {
+        "HOST_IP": safe_ip,
+        **{name: json.dumps(value) for name, value in asr_environment.items()},
+    }
+    return template.substitute(substitutions)
 
 
 def default_output_path(repo_root: Path) -> Path:
@@ -67,10 +135,24 @@ def resolve_output_path(repo_root: Path, output_path: Path | None) -> Path:
     return candidate
 
 
-def write_config(host_ip: str, output_path: Path, *, repo_root: Path | None = None) -> Path:
+def write_config(
+    host_ip: str,
+    output_path: Path,
+    *,
+    repo_root: Path | None = None,
+    process_environment: dict[str, str] | None = None,
+    user_environment: dict[str, str] | None = None,
+) -> Path:
     output_path = resolve_output_path(repo_root or Path.cwd(), output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(render_config(host_ip), encoding="utf-8")
+    output_path.write_text(
+        render_config(
+            host_ip,
+            process_environment=process_environment,
+            user_environment=user_environment,
+        ),
+        encoding="utf-8",
+    )
     return output_path
 
 

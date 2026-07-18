@@ -206,10 +206,20 @@ def test_import_preserves_every_pinned_relative_path():
     source_root = repo_root / "tmp" / "xiaozhi-reference" / "main" / "xiaozhi-server"
     imported_root = repo_root / "xiaozhi_server"
 
-    source_paths = sorted(path.relative_to(source_root).as_posix() for path in source_root.rglob("*") if path.is_file())
-    imported_paths = sorted(path.relative_to(imported_root).as_posix() for path in imported_root.rglob("*") if path.is_file())
+    source_paths = sorted(
+        path.relative_to(source_root).as_posix()
+        for path in source_root.rglob("*")
+        if path.is_file() and not {"data", "tmp", "__pycache__"}.intersection(path.relative_to(source_root).parts)
+    )
+    imported_paths = sorted(
+        path.relative_to(imported_root).as_posix()
+        for path in imported_root.rglob("*")
+        if path.is_file() and not {"data", "tmp", "__pycache__"}.intersection(path.relative_to(imported_root).parts)
+    )
+    patch_manifest = json.loads((repo_root / "third_party" / "xiaozhi-esp32-server" / "PATCH_MANIFEST.json").read_text())
+    added_paths = sorted(patch["path"] for patch in patch_manifest["patches"] if patch["status"] == "added")
 
-    assert imported_paths == source_paths
+    assert imported_paths == sorted([*source_paths, *added_paths])
 
 
 def test_upstream_record_keeps_the_literal_source_subtree():

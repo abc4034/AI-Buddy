@@ -142,6 +142,32 @@ function Assert-DemoHostIp {
   return $IpAddress
 }
 
+function Get-ProcessThenUserEnvironmentValue {
+  param([string]$Name)
+
+  $processValue = [System.Environment]::GetEnvironmentVariable($Name, "Process")
+  if (-not [string]::IsNullOrWhiteSpace($processValue)) {
+    return $processValue
+  }
+
+  return [System.Environment]::GetEnvironmentVariable($Name, "User")
+}
+
+function Assert-LiveAsrEnvironment {
+  $required = @("ASR_PROVIDER", "ASR_HTTP_URL", "ASR_MODEL", "ASR_API_KEY")
+  foreach ($name in $required) {
+    if ([string]::IsNullOrWhiteSpace((Get-ProcessThenUserEnvironmentValue -Name $name))) {
+      throw "ASR live mode requires ASR_PROVIDER, ASR_HTTP_URL, ASR_MODEL, ASR_API_KEY, and a positive ASR_TIMEOUT_SECONDS."
+    }
+  }
+
+  $timeoutText = Get-ProcessThenUserEnvironmentValue -Name "ASR_TIMEOUT_SECONDS"
+  $timeout = 0.0
+  if (-not [double]::TryParse($timeoutText, [ref]$timeout) -or $timeout -le 0) {
+    throw "ASR live mode requires ASR_PROVIDER, ASR_HTTP_URL, ASR_MODEL, ASR_API_KEY, and a positive ASR_TIMEOUT_SECONDS."
+  }
+}
+
 function Get-RenderXiaoZhiConfigArguments {
   param(
     [string]$HostIp,
@@ -198,6 +224,7 @@ function Invoke-RenderXiaoZhiConfig {
     $HostIp = Assert-DemoHostIp -IpAddress $HostIp
   }
 
+  Assert-LiveAsrEnvironment
   $Output = Resolve-XiaoZhiConfigOutputPath -Output $Output
   $argsList = Get-RenderXiaoZhiConfigArguments -HostIp $HostIp -Output $Output
   Write-Host "Rendering XiaoZhi config for host IP $HostIp"

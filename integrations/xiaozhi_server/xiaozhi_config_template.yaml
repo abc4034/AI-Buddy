@@ -11,3 +11,13 @@ selected_module:
   LLM: ChatGLMLLM
   Memory: nomem
   Intent: nointent
+  ASR: BuddyQwenASR
+
+ASR:
+  BuddyQwenASR:
+    type: buddy_qwen
+    provider_name: ${ASR_PROVIDER}
+    api_key: ${ASR_API_KEY}
+    model_name: ${ASR_MODEL}
+    base_url: ${ASR_HTTP_URL}
+    timeout_seconds: ${ASR_TIMEOUT_SECONDS}

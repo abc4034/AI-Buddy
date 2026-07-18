@@ -27,6 +27,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "live_provider: makes a real configured ASR provider request",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["buddy_brain", "buddy_gateway"]
