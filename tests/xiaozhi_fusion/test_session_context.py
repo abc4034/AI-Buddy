@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from core.buddy.session_context import (
     register_context,
     remove_context,
 )
+from core.connection import ConnectionHandler
 
 
 def test_session_context_is_immutable_and_client_id_falls_back_to_device_id():
@@ -63,3 +65,60 @@ def test_context_registry_keeps_interleaved_sessions_isolated():
     finally:
         for context in contexts:
             remove_context(context.session_id)
+
+
+def connection_handler(session_id: str) -> ConnectionHandler:
+    handler = object.__new__(ConnectionHandler)
+    handler.session_id = session_id
+    handler.config = {"buddy_mode": True}
+    handler.websocket = None
+    handler.timeout_task = None
+    handler.stop_event = threading.Event()
+    handler.vad = None
+    handler.tts = None
+    handler.asr = None
+    handler.executor = None
+    handler.memory = None
+    handler.logger = type(
+        "Logger",
+        (),
+        {
+            "bind": lambda self, **_: self,
+            "info": lambda self, *_: None,
+            "error": lambda self, *_: None,
+        },
+    )()
+    return handler
+
+
+def test_failed_connection_setup_removes_registered_context():
+    handler = connection_handler("session-failed")
+
+    class Request:
+        headers = {"device-id": "fc:01", "client-id": "client-a"}
+
+        @property
+        def path(self):
+            raise RuntimeError("setup failed after identity registration")
+
+    class WebSocket:
+        request = Request()
+        remote_address = ("127.0.0.1", 12345)
+        closed = True
+
+        async def close(self):
+            return None
+
+    asyncio.run(handler.handle_connection(WebSocket()))
+
+    assert get_context("session-failed") is None
+
+
+def test_repeated_close_removes_context_idempotently():
+    handler = connection_handler("session-close")
+    register_context(SessionContext("session-close", "fc:01", "client-a"))
+
+    asyncio.run(handler.close())
+    asyncio.run(handler.close())
+
+    assert get_context("session-close") is None

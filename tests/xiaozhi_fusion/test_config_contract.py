@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "xiaozhi_server"
@@ -34,10 +35,12 @@ def buddy_config() -> dict[str, object]:
         "end_prompt": {"enable": False},
         "tools": {"enable": False},
         "mcp_endpoint": "",
-        "context_provider": {"enable": False},
-        "voiceprint": {"enable": False},
+        "context_providers": [],
+        "voiceprint": False,
         "report": {"enable": False},
         "VLLM": {"enable": False},
+        "prompt": "",
+        "prompt_template": "buddy-neutral-prompt.txt",
     }
 
 
@@ -65,10 +68,12 @@ def test_buddy_ownership_configuration_is_accepted():
         (("end_prompt", "enable"), True, "end_prompt"),
         (("tools", "enable"), True, "tools"),
         (("mcp_endpoint",), "ws://mcp.example.test", "mcp_endpoint"),
-        (("context_provider", "enable"), True, "context_provider"),
-        (("voiceprint", "enable"), True, "voiceprint"),
+        (("context_providers",), [{"url": "https://context.example.test"}], "context_providers"),
+        (("voiceprint",), {"enable": False, "url": "https://voice.example.test/?key=test"}, "voiceprint"),
         (("report", "enable"), True, "report"),
         (("VLLM", "enable"), True, "VLLM"),
+        (("prompt",), "upstream persona", "prompt"),
+        (("prompt_template",), "agent-base-prompt.txt", "prompt_template"),
     ],
 )
 def test_buddy_ownership_configuration_fails_closed(path, value, match):
@@ -120,3 +125,13 @@ def test_config_renderer_enables_buddy_ownership_overlay():
     assert "Memory: nomem" in rendered
     assert "Intent: nointent" in rendered
     assert "enable: false" in rendered
+    assert "context_providers: []" in rendered
+    assert "voiceprint: false" in rendered
+    assert "prompt_template: buddy-neutral-prompt.txt" in rendered
+
+    overlay = yaml.safe_load(rendered)
+    default = config_loader.read_config(str(RUNTIME_DIR / "config.yaml"))
+    effective = config_loader.merge_configs(default, overlay)
+    assert effective["prompt"] == ""
+    assert effective["prompt_template"] == "buddy-neutral-prompt.txt"
+    assert (RUNTIME_DIR / effective["prompt_template"]).read_text(encoding="utf-8").strip() == "{{ base_prompt }}"

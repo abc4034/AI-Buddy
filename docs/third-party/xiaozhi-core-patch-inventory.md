@@ -16,5 +16,6 @@ Task 5 Buddy Core ownership patches:
 
 - `config/config_loader.py` and `app.py` reject a remote manager configuration before fetch and validate the fully merged Buddy ownership overlay before listeners start.
 - `core/buddy/config_contract.py` and `core/buddy/session_context.py` enforce fail-closed ownership and keep immutable device/client/session identity in an `RLock`-guarded lifecycle registry.
+- `buddy-neutral-prompt.txt` renders only the empty Buddy overlay prompt, while the ownership contract requires an empty `context_providers` list and fully disables voiceprint with the runtime-compatible boolean value.
 - `core/providers/llm/buddy_core/` forwards only the invocation's final user turn and immutable metadata to `http://127.0.0.1:8010/v1/chat/completions`.
 - `core/connection.py` registers/removes session identity, snapshots a top-level Buddy turn, and bypasses Unified Tool Handler and upstream manager title persistence; `core/handle/helloHandle.py` bypasses device MCP initialization only in Buddy mode.

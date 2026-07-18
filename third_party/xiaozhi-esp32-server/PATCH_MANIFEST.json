@@ -43,6 +43,13 @@
       "status": "modified"
     },
     {
+      "current_sha256": "8b526a00b10d766c6695a2a570794d3afaa7f77b315a0d6cda98c0562b7eabde",
+      "original_sha256": null,
+      "path": "buddy-neutral-prompt.txt",
+      "reason": "Provide a neutral native prompt template so Buddy Core remains the sole persona and prompt owner.",
+      "status": "added"
+    },
+    {
       "current_sha256": "1a57a22f742f8fe72ac1d00aab2194791d6ee48f3367f6795576240ea1a23a3a",
       "original_sha256": null,
       "path": "core/buddy/__init__.py",
@@ -50,10 +57,10 @@
       "status": "added"
     },
     {
-      "current_sha256": "f930c32563f8a9b18a0332989d97da0e31fd082296dc07440dd9e8fee8a81427",
+      "current_sha256": "4955c685def34d21395cf4053a782098af5e336c238eefac7512a0cafe0d9f74",
       "original_sha256": null,
       "path": "core/buddy/config_contract.py",
-      "reason": "Validate the Buddy production ownership contract after configuration merge and reject local remote-manager settings before any remote fetch.",
+      "reason": "Validate the Buddy production ownership contract after configuration merge, including the actual context-provider, voiceprint, and neutral-prompt runtime keys, and reject local remote-manager settings before any remote fetch.",
       "status": "added"
     },
     {

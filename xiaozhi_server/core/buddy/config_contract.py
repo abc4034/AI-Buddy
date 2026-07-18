@@ -5,6 +5,7 @@ from typing import Any
 
 
 BUDDY_CORE_BASE_URL = "http://127.0.0.1:8010"
+BUDDY_NEUTRAL_PROMPT_TEMPLATE = "buddy-neutral-prompt.txt"
 
 
 def validate_local_buddy_config(config: Mapping[str, Any]) -> None:
@@ -50,8 +51,18 @@ def validate_effective_config(config: dict[str, Any]) -> None:
         raise ValueError("Buddy ownership violation: end_prompt.enable must be false.")
     if config.get("mcp_endpoint") not in (None, ""):
         raise ValueError("Buddy ownership violation: mcp_endpoint must be empty.")
+    if config.get("context_providers") != []:
+        raise ValueError("Buddy ownership violation: context_providers must be empty.")
+    if config.get("voiceprint") is not False:
+        raise ValueError("Buddy ownership violation: voiceprint must be false.")
+    if config.get("prompt") != "":
+        raise ValueError("Buddy ownership violation: prompt must be empty.")
+    if config.get("prompt_template") != BUDDY_NEUTRAL_PROMPT_TEMPLATE:
+        raise ValueError(
+            f"Buddy ownership violation: prompt_template must be {BUDDY_NEUTRAL_PROMPT_TEMPLATE}."
+        )
 
-    for name in ("tools", "context_provider", "voiceprint", "report", "VLLM"):
+    for name in ("tools", "report", "VLLM"):
         if not _is_explicitly_disabled(config.get(name)):
             raise ValueError(f"Buddy ownership violation: {name} must be disabled.")
 

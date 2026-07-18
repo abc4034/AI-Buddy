@@ -17,15 +17,14 @@ end_prompt:
   enable: false
 tools:
   enable: false
-context_provider:
-  enable: false
-voiceprint:
-  enable: false
+context_providers: []
+voiceprint: false
 report:
   enable: false
 VLLM:
   enable: false
 prompt: ""
+prompt_template: buddy-neutral-prompt.txt
 
 selected_module:
   LLM: BuddyCoreLLM
