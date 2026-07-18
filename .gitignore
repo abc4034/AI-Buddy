@@ -9,3 +9,15 @@ __pycache__/
 .run/
 data/
 tmp/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.log
+*.pid
+build/
+dist/
+*.egg-info/
+.mypy_cache/
+.hypothesis/
+audio_output/

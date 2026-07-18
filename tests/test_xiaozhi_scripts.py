@@ -11,6 +11,7 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 SCRIPTS = [
     "backup_local_demo_data.ps1",
+    "backup_v05_runtime.ps1",
     "check_local_demo_status.ps1",
     "render_xiaozhi_config.ps1",
     "setup_xiaozhi_server.ps1",
@@ -26,6 +27,7 @@ SCRIPTS = [
     "smoke_gateway_voice_loop.ps1",
     "smoke_gateway_text_loop.ps1",
     "smoke_two_devices.ps1",
+    "scan_staged_secrets.ps1",
 ]
 
 
@@ -1209,6 +1211,205 @@ def test_backup_local_demo_data_copies_existing_database_and_config(tmp_path: Pa
     assert payload["XiaoZhiConfigBackup"].endswith("xiaozhi.config.yaml")
     assert (backup_root / "buddy_memory.db").read_text(encoding="utf-8") == "memory"
     assert (backup_root / "xiaozhi.config.yaml").read_text(encoding="utf-8") == "config"
+
+
+def copy_v05_backup_script_to_fake_repo(tmp_path: Path) -> Path:
+    fake_repo = tmp_path / "repo"
+    script_dir = fake_repo / "scripts"
+    script_dir.mkdir(parents=True)
+    script_path = script_dir / "backup_v05_runtime.ps1"
+    script_path.write_text(
+        (SCRIPTS_DIR / "backup_v05_runtime.ps1").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    return fake_repo
+
+
+def test_v05_backup_creates_hashed_manifest_for_runtime_artifacts(tmp_path: Path):
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    config_path = fake_repo / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
+    audio_path = fake_repo / "data" / "gateway_audio" / "session-a" / "audio.wav"
+    backup_root = fake_repo / "tmp" / "v05-runtime-backup"
+    config_path.parent.mkdir(parents=True)
+    audio_path.parent.mkdir(parents=True)
+    (fake_repo / ".env").write_text("DEMO_VALUE=fixture\n", encoding="utf-8")
+    config_path.write_text("selected_module: fixture\n", encoding="utf-8")
+    audio_path.write_bytes(b"RIFFfixtureWAVE")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                "$env:ASR_PROVIDER = 'fixture-asr'",
+                "$env:TTS_PROVIDER = 'fixture-tts'",
+                f"New-V05RuntimeBackup -BackupRoot '{backup_root}' | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout)
+    manifest_path = Path(payload["ManifestPath"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert Path(payload["BackupDir"]).parent == backup_root
+    assert manifest_path.exists()
+    assert payload["ManifestSha256"].isalnum() and len(payload["ManifestSha256"]) == 64
+    assert manifest["source_commit"] == "22e4712814dfb19f1ecea9bd0e6bfbd24c057ac5"
+    assert manifest["environment_file"] == "environment.json"
+    assert {entry["relative_path"] for entry in manifest["files"]} == {
+        ".env",
+        ".run/xiaozhi-esp32-server/main/xiaozhi-server/data/.config.yaml",
+        "data/gateway_audio/session-a/audio.wav",
+        "environment.json",
+    }
+    assert all(len(entry["sha256"]) == 64 and entry["sha256"].islower() for entry in manifest["files"])
+    environment = json.loads((Path(payload["BackupDir"]) / "environment.json").read_text(encoding="utf-8"))
+    assert set(environment) == {"process", "user"}
+    assert set(environment["process"]) == {"ASR_PROVIDER", "TTS_PROVIDER"}
+
+
+def test_v05_restore_validates_before_apply_and_restores_through_manifest(tmp_path: Path):
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    config_path = fake_repo / ".run" / "xiaozhi-esp32-server" / "main" / "xiaozhi-server" / "data" / ".config.yaml"
+    audio_path = fake_repo / "data" / "gateway_audio" / "session-a" / "audio.wav"
+    backup_root = fake_repo / "tmp" / "v05-runtime-backup"
+    config_path.parent.mkdir(parents=True)
+    audio_path.parent.mkdir(parents=True)
+    (fake_repo / ".env").write_text("DEMO_VALUE=before\n", encoding="utf-8")
+    config_path.write_text("selected_module: before\n", encoding="utf-8")
+    audio_path.write_bytes(b"RIFFbeforeWAVE")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                "$env:ASR_PROVIDER = 'fixture-asr-before'",
+                f"$backup = New-V05RuntimeBackup -BackupRoot '{backup_root}'",
+                f"Set-Content -LiteralPath '{fake_repo / '.env'}' -Value 'DEMO_VALUE=after'",
+                f"Set-Content -LiteralPath '{config_path}' -Value 'selected_module: after'",
+                f"[System.IO.File]::WriteAllBytes('{audio_path}', [byte[]](1, 2, 3))",
+                "$env:ASR_PROVIDER = 'fixture-asr-after'",
+                "Restore-V05RuntimeBackup -BackupDir $backup.BackupDir | Out-Null",
+                "Restore-V05RuntimeBackup -BackupDir $backup.BackupDir -Apply -EnvironmentTarget Process | Out-Null",
+                "[pscustomobject]@{",
+                f"  EnvRestored = ($env:ASR_PROVIDER -eq 'fixture-asr-before')",
+                f"  DotEnvRestored = ((Get-Content -Raw -LiteralPath '{fake_repo / '.env'}').Trim() -eq 'DEMO_VALUE=before')",
+                f"  ConfigRestored = ((Get-Content -Raw -LiteralPath '{config_path}').Trim() -eq 'selected_module: before')",
+                f"  AudioRestored = ([System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes('{audio_path}')) -eq 'RIFFbeforeWAVE')",
+                "} | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+
+    assert payload == {
+        "EnvRestored": True,
+        "DotEnvRestored": True,
+        "ConfigRestored": True,
+        "AudioRestored": True,
+    }
+
+
+def test_v05_restore_rejects_tampered_backup_before_writing(tmp_path: Path):
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    backup_dir = fake_repo / "tmp" / "v05-runtime-backup" / "fixture"
+    backup_dir.mkdir(parents=True)
+    (backup_dir / ".env").write_text("DEMO_VALUE=tampered\n", encoding="utf-8")
+    (backup_dir / "environment.json").write_text('{"process":{},"user":{}}', encoding="utf-8")
+    (backup_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "source_commit": "22e4712814dfb19f1ecea9bd0e6bfbd24c057ac5",
+                "files": [
+                    {"relative_path": ".env", "sha256": "0" * 64},
+                    {"relative_path": "environment.json", "sha256": "0" * 64},
+                ],
+                "environment_file": "environment.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+    destination = fake_repo / ".env"
+    destination.write_text("DEMO_VALUE=destination\n", encoding="utf-8")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                f"Restore-V05RuntimeBackup -BackupDir '{backup_dir}' -Apply",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "hash" in combined_output(result).lower()
+    assert destination.read_text(encoding="utf-8") == "DEMO_VALUE=destination\n"
+
+
+def test_v05_staged_secret_scanner_allows_only_explicit_fixture_path(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "scan_staged_secrets.ps1"
+    fixture_marker = "sk-" + "test-fixture-token"
+    assignment_name = "API" + "_KEY"
+    assignment_separator = "="
+    safe_repo = tmp_path / "safe"
+    allowed_repo = tmp_path / "allowed"
+    rejected_repo = tmp_path / "rejected"
+    for repository, relative_path, content in (
+        (safe_repo, "readme.md", "safe change\n\n"),
+        (allowed_repo, "tests/fixtures/allowed-secret.diff", f"{assignment_name}{assignment_separator}{fixture_marker}\n"),
+        (rejected_repo, "app.py", f"{assignment_name}{assignment_separator}{fixture_marker}\n"),
+    ):
+        path = repository / relative_path
+        path.parent.mkdir(parents=True)
+        path.write_text(content, encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+        subprocess.run(["git", "add", relative_path], cwd=repository, check=True)
+
+    safe = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "Invoke-StagedSecretScan",
+                "}",
+            ]
+        ),
+        cwd=safe_repo,
+    )
+    allowed = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "Invoke-StagedSecretScan -AllowedTestFixturePath 'tests/fixtures/allowed-secret.diff'",
+                "}",
+            ]
+        ),
+        cwd=allowed_repo,
+    )
+    rejected = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "Invoke-StagedSecretScan",
+                "}",
+            ]
+        ),
+        cwd=rejected_repo,
+        check=False,
+    )
+
+    assert safe.returncode == 0
+    assert allowed.returncode == 0
+    assert rejected.returncode != 0
+    assert fixture_marker not in combined_output(rejected)
 
 
 def test_check_local_demo_status_reports_ports_config_and_runtime_patch(tmp_path: Path):
