@@ -23,12 +23,14 @@ SCRIPTS = [
     "start_buddy_gateway.ps1",
     "start_buddy_brain.ps1",
     "start_xiaozhi_server.ps1",
+    "start_buddy_fusion.ps1",
     "stop_local_demo.ps1",
     "print_local_demo_urls.ps1",
     "smoke_chat.ps1",
     "smoke_gateway_audio_capture.ps1",
     "smoke_gateway_asr_text_loop.ps1",
     "smoke_gateway_voice_loop.ps1",
+    "smoke_xiaozhi_fusion.ps1",
     "smoke_gateway_text_loop.ps1",
     "smoke_two_devices.ps1",
     "scan_staged_secrets.ps1",
@@ -1144,7 +1146,7 @@ def test_smoke_gateway_voice_loop_does_not_fall_back_when_latest_asr_failed():
     assert "Session: session-a" not in result.stdout
 
 
-def test_stop_local_demo_script_stops_unique_listener_processes_only():
+def test_stop_local_demo_script_refuses_to_stop_unowned_listener_processes():
     script_path = SCRIPTS_DIR / "stop_local_demo.ps1"
 
     result = run_powershell(
@@ -1152,25 +1154,16 @@ def test_stop_local_demo_script_stops_unique_listener_processes_only():
             [
                 "& {",
                 f". '{script_path}'",
-                "function Get-NetTCPConnection {",
-                "  @(",
-                "    [pscustomobject]@{ LocalPort = 8000; OwningProcess = 111 },",
-                "    [pscustomobject]@{ LocalPort = 8003; OwningProcess = 111 },",
-                "    [pscustomobject]@{ LocalPort = 8010; OwningProcess = 222 },",
-                "    [pscustomobject]@{ LocalPort = 9000; OwningProcess = 333 }",
-                "  )",
-                "}",
-                "function Get-Process { param([int]$Id) [pscustomobject]@{ Id = $Id; ProcessName = \"python\" } }",
                 "$script:Stopped = @()",
                 "function Stop-Process { param([int]$Id, [switch]$Force) $script:Stopped += $Id }",
-                "Invoke-StopLocalDemo | Out-Null",
+                "try { Invoke-StopLocalDemo | Out-Null } catch { $_.Exception.Message | Write-Output }",
                 "$script:Stopped | ConvertTo-Json -Compress",
                 "}",
             ]
         )
     )
 
-    assert json.loads(result.stdout.splitlines()[-1]) == [111, 222]
+    assert "owned fusion runtime state" in result.stdout
 
 
 def test_stop_local_demo_script_normalizes_comma_separated_ports():
@@ -1190,31 +1183,22 @@ def test_stop_local_demo_script_normalizes_comma_separated_ports():
     assert json.loads(result.stdout.splitlines()[-1]) == [8000, 8003]
 
 
-def test_stop_local_demo_script_entrypoint_splits_comma_separated_ports():
+def test_stop_local_demo_script_entrypoint_refuses_without_owned_runtime_state():
     script_path = SCRIPTS_DIR / "stop_local_demo.ps1"
 
     result = run_powershell(
         "\n".join(
             [
                 "& {",
-                "function Get-NetTCPConnection {",
-                "  @(",
-                "    [pscustomobject]@{ LocalPort = 8000; OwningProcess = 111 },",
-                "    [pscustomobject]@{ LocalPort = 8003; OwningProcess = 111 },",
-                "    [pscustomobject]@{ LocalPort = 8010; OwningProcess = 222 }",
-                "  )",
-                "}",
-                "function Get-Process { param([int]$Id) [pscustomobject]@{ Id = $Id; ProcessName = \"python\" } }",
-                "$global:Stopped = @()",
-                "function Stop-Process { param([int]$Id, [switch]$Force) $global:Stopped += $Id }",
-                f"& '{script_path}' -Ports 8000,8003 | Out-Null",
-                "$global:Stopped | ConvertTo-Json -Compress",
+                f"& '{script_path}' -Ports 8000,8003",
                 "}",
             ]
-        )
+        ),
+        check=False,
     )
 
-    assert json.loads(result.stdout.splitlines()[-1]) == 111
+    assert result.returncode != 0
+    assert "owned fusion runtime state" in combined_output(result)
 
 
 def test_backup_local_demo_data_copies_existing_database_and_config(tmp_path: Path):
@@ -2592,3 +2576,104 @@ def test_dependency_checker_checks_and_imports_native_selected_modules():
     assert "core.providers.asr.fun_local" in text
     assert "core.providers.llm.openai.openai" in text
     assert "core.providers.tts.edge" in text
+
+
+def test_fusion_startup_waits_for_buddy_before_starting_xiaozhi_and_records_listener_pids(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "start_buddy_fusion.ps1"
+    runtime_path = tmp_path / "runtime.json"
+    server_dir = REPO_ROOT / "xiaozhi_server"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "$script:events = @()",
+                "function Copy-FusionProviderEnvironmentToProcess { $script:events += 'environment' }",
+                "function Invoke-RenderFusionConfig { param($AdvertiseHost) $script:events += 'render' }",
+                "function Start-FusionProcess { param($Name, $WorkingDirectory, $ArgumentList) $script:events += ('start:' + $Name); [pscustomobject]@{ Id = if ($Name -eq 'buddy-core') { 101 } else { 102 } } }",
+                "function Wait-FusionHttpHealth { param($Port) $script:events += ('health:' + $Port) }",
+                "function Wait-FusionPorts { param($Ports) $script:events += ('ports:' + ($Ports -join ',')) }",
+                "function Resolve-ServiceListenerPid { param($Ports, $ExpectedIdentity, $CondaEnv) if ($Ports[0] -eq 8010) { 201 } else { 202 } }",
+                f"Invoke-StartBuddyFusion -AdvertiseHost '192.168.1.10' -CondaEnv 'xiaozhi-env' -ServerDir '{server_dir}' -RuntimeStatePath '{runtime_path}' | Out-Null",
+                "$payload = [pscustomobject]@{ Events = $script:events; Runtime = Get-Content -Raw -LiteralPath '" + str(runtime_path).replace("\\", "\\\\") + "' | ConvertFrom-Json }",
+                "$payload | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["Events"] == [
+        "environment",
+        "render",
+        "start:buddy-core",
+        "health:8010",
+        "start:xiaozhi",
+        "ports:8000,8003",
+        "health:8003",
+    ]
+    assert payload["Runtime"]["BuddyCore"]["ListenerPid"] == 201
+    assert payload["Runtime"]["XiaoZhi"]["ListenerPid"] == 202
+
+
+def test_fusion_listener_resolution_fails_closed_for_unknown_or_split_owners():
+    script_path = SCRIPTS_DIR / "start_buddy_fusion.ps1"
+    identity = REPO_ROOT / "xiaozhi_server" / "app.py"
+
+    unknown = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function Get-NetTCPConnection { [pscustomobject]@{ LocalPort = 8000; OwningProcess = 42; State = 'Listen' } }",
+                "function Get-CimInstance { $null }",
+                f"Resolve-ServiceListenerPid -Ports @(8000) -ExpectedIdentity '{identity}' -CondaEnv 'xiaozhi-env'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+    assert unknown.returncode != 0
+    assert "unknown" in combined_output(unknown).lower()
+
+    split = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function Get-NetTCPConnection { @([pscustomobject]@{ LocalPort = 8000; OwningProcess = 42; State = 'Listen' }, [pscustomobject]@{ LocalPort = 8003; OwningProcess = 43; State = 'Listen' }) }",
+                f"Resolve-ServiceListenerPid -Ports @(8000, 8003) -ExpectedIdentity '{identity}' -CondaEnv 'xiaozhi-env'",
+                "}",
+            ]
+        ),
+        check=False,
+    )
+    assert split.returncode != 0
+    assert "same listener" in combined_output(split).lower()
+
+
+def test_fusion_listener_resolution_validates_conda_python_and_absolute_identity():
+    script_path = SCRIPTS_DIR / "start_buddy_fusion.ps1"
+    identity = REPO_ROOT / "xiaozhi_server" / "app.py"
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{script_path}'",
+                "function Get-NetTCPConnection { @([pscustomobject]@{ LocalPort = 8000; OwningProcess = 42; State = 'Listen' }, [pscustomobject]@{ LocalPort = 8003; OwningProcess = 42; State = 'Listen' }) }",
+                "function Get-CimInstance { [pscustomobject]@{ ProcessId = 42; ExecutablePath = 'C:\\Miniconda\\envs\\xiaozhi-env\\python.exe'; CommandLine = 'python " + str(identity) + "' } }",
+                f"Resolve-ServiceListenerPid -Ports @(8000, 8003) -ExpectedIdentity '{identity}' -CondaEnv 'xiaozhi-env'",
+                "}",
+            ]
+        )
+    )
+    assert result.stdout.strip() == "42"
+
+
+def test_fusion_scripts_never_emit_environment_values():
+    for name in ("start_buddy_fusion.ps1", "smoke_xiaozhi_fusion.ps1", "check_local_demo_status.ps1"):
+        text = (SCRIPTS_DIR / name).read_text(encoding="utf-8")
+        assert "$_ .Value" not in text
+        assert "Write-Host $env:" not in text

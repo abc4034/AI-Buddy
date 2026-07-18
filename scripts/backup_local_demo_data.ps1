@@ -1,6 +1,6 @@
 param(
   [string]$DatabasePath = "data\buddy_memory.db",
-  [string]$XiaoZhiConfigPath = ".run\xiaozhi-esp32-server\main\xiaozhi-server\data\.config.yaml",
+  [string]$XiaoZhiConfigPath = "xiaozhi_server\data\.config.yaml",
   [string]$BackupRoot = ""
 )
 
@@ -28,7 +28,7 @@ function Copy-IfExists {
 function Invoke-BackupLocalDemoData {
   param(
     [string]$DatabasePath = "data\buddy_memory.db",
-    [string]$XiaoZhiConfigPath = ".run\xiaozhi-esp32-server\main\xiaozhi-server\data\.config.yaml",
+    [string]$XiaoZhiConfigPath = "xiaozhi_server\data\.config.yaml",
     [string]$BackupRoot = ""
   )
 

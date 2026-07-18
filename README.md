@@ -40,6 +40,17 @@ For the current demo phase, prefer the Windows PowerShell + conda `xiaozhi-env` 
 - Buddy Core vs old Buddy Brain naming: [docs/buddy-core-and-buddy-brain.md](docs/buddy-core-and-buddy-brain.md)
 - Memory dashboard: [docs/runbooks/memory-dashboard.md](docs/runbooks/memory-dashboard.md)
 - Stabilization roadmap: [docs/superpowers/plans/2026-07-03-buddy-core-stabilization-roadmap.md](docs/superpowers/plans/2026-07-03-buddy-core-stabilization-roadmap.md)
+- Fused XiaoZhi Core Windows runbook: [docs/runbooks/buddy-xiaozhi-core-fusion.md](docs/runbooks/buddy-xiaozhi-core-fusion.md)
+
+## XiaoZhi Core Fusion
+
+The supported hardware runtime is Buddy Core on `8010` plus the native XiaoZhi Server runtime on `8000` and `8003`. Start both in order with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_buddy_fusion.ps1 -AdvertiseHost <host-lan-ip> -CondaEnv xiaozhi-env
+```
+
+Use `http://<host-lan-ip>:8003/xiaozhi/ota/` as the device OTA URL. Check ownership and configuration with `check_local_demo_status.ps1`, then stop only the owned runtime with `stop_local_demo.ps1`. The v0.5 Gateway remains branch history until the cleanup acceptance gate; do not run it on the XiaoZhi ports.
 
 ## Setup
 
