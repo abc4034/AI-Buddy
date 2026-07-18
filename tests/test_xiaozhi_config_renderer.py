@@ -15,11 +15,11 @@ def test_render_config_uses_lan_ip_for_all_device_facing_urls():
 
     assert "websocket: ws://192.168.2.9:8000/xiaozhi/v1/" in rendered
     assert "vision_explain: http://192.168.2.9:8003/mcp/vision/explain" in rendered
-    assert "LLM: ChatGLMLLM" in rendered
+    assert "LLM: BuddyCoreLLM" in rendered
     assert "Memory: nomem" in rendered
     assert "Intent: nointent" in rendered
-    assert "BuddyCoreLLM" not in rendered
-    assert ":8010/" not in rendered
+    assert "BuddyCoreLLM" in rendered
+    assert "base_url: http://127.0.0.1:8010" in rendered
     assert "${HOST_IP}" not in rendered
 
 
@@ -37,7 +37,7 @@ def test_write_config_creates_parent_directories(tmp_path):
 
     assert written == output
     assert output.exists()
-    assert "ChatGLMLLM" in output.read_text(encoding="utf-8")
+    assert "BuddyCoreLLM" in output.read_text(encoding="utf-8")
 
 
 def test_default_output_path_points_to_xiaozhi_runtime_data():

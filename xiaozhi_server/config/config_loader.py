@@ -30,6 +30,9 @@ async def load_config():
     # 检查缓存
     cached_config = cache_manager.get(CacheType.CONFIG, "main_config")
     if cached_config is not None:
+        from core.buddy.config_contract import validate_effective_config
+
+        validate_effective_config(cached_config)
         return cached_config
 
     default_config_path = get_project_dir() + "config.yaml"
@@ -39,11 +42,16 @@ async def load_config():
     default_config = read_config(default_config_path)
     custom_config = read_config(custom_config_path)
 
+    from core.buddy.config_contract import validate_effective_config, validate_local_buddy_config
+
+    validate_local_buddy_config(custom_config)
+
     if custom_config.get("manager-api", {}).get("url"):
         config = await get_config_from_api_async(custom_config)
     else:
         # 合并配置
         config = merge_configs(default_config, custom_config)
+    validate_effective_config(config)
     # 初始化目录
     ensure_directories(config)
 

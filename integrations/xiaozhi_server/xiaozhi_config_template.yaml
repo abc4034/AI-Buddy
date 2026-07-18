@@ -7,11 +7,46 @@ server:
   auth:
     enabled: false
 
+buddy_mode: true
+read_config_from_api: false
+manager-api:
+  url: ""
+  secret: ""
+mcp_endpoint: ""
+end_prompt:
+  enable: false
+tools:
+  enable: false
+context_provider:
+  enable: false
+voiceprint:
+  enable: false
+report:
+  enable: false
+VLLM:
+  enable: false
+prompt: ""
+
 selected_module:
-  LLM: ChatGLMLLM
+  LLM: BuddyCoreLLM
   Memory: nomem
   Intent: nointent
   ASR: BuddyQwenASR
+  VLLM: null
+
+LLM:
+  BuddyCoreLLM:
+    type: buddy_core
+    base_url: http://127.0.0.1:8010
+    timeout_seconds: 30
+
+Memory:
+  nomem:
+    type: nomem
+
+Intent:
+  nointent:
+    type: nointent
 
 ASR:
   BuddyQwenASR:

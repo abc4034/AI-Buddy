@@ -45,6 +45,7 @@ from core.utils.prompt_manager import PromptManager
 from core.utils.voiceprint_provider import VoiceprintProvider
 from core.utils.util import get_system_error_response
 from core.utils import textUtils
+from core.buddy.session_context import context_from_headers, register_context, remove_context
 
 
 TAG = __name__
@@ -217,6 +218,8 @@ class ConnectionHandler:
             )
 
             self.device_id = self.headers.get("device-id", None)
+            if self.config.get("buddy_mode"):
+                register_context(context_from_headers(self.session_id, self.headers))
 
             # 认证通过,继续处理
             self.websocket = ws
@@ -277,7 +280,7 @@ class ConnectionHandler:
         """保存记忆并关闭连接"""
         try:
             # 守护线程1：独立生成标题（不依赖记忆模型）
-            if self.session_id:
+            if self.session_id and not self.config.get("buddy_mode"):
                 def generate_title_task():
                     try:
                         loop = asyncio.new_event_loop()
@@ -1043,6 +1046,9 @@ class ConnectionHandler:
                 self.logger.bind(tag=TAG).info("使用主LLM作为意图识别模型")
 
         """加载统一工具处理器"""
+        if self.config.get("buddy_mode"):
+            return
+
         self.func_handler = UnifiedToolHandler(self)
 
         # 异步初始化工具处理器
@@ -1066,6 +1072,7 @@ class ConnectionHandler:
             current_sentence_id = str(uuid.uuid4().hex)
             self.sentence_id = current_sentence_id  # 更新共享属性
             self.dialogue.put(Message(role="user", content=query))
+            dialogue_snapshot = copy.deepcopy(self.dialogue.dialogue)
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
                     sentence_id=current_sentence_id,
@@ -1076,6 +1083,7 @@ class ConnectionHandler:
         else:
             # 递归调用时，使用当前的sentence_id
             current_sentence_id = self.sentence_id
+            dialogue_snapshot = None
 
         # 设置最大递归深度，避免无限循环，可根据实际需求调整
         MAX_DEPTH = 5
@@ -1130,11 +1138,16 @@ class ConnectionHandler:
                     functions=functions,
                 )
             else:
+                llm_dialogue = (
+                    dialogue_snapshot
+                    if self.config.get("buddy_mode") and dialogue_snapshot is not None
+                    else self.dialogue.get_llm_dialogue_with_memory(
+                        memory_str, self.config.get("voiceprint", {})
+                    )
+                )
                 llm_responses = self.llm.response(
                     self.session_id,
-                    self.dialogue.get_llm_dialogue_with_memory(
-                        memory_str, self.config.get("voiceprint", {})
-                    ),
+                    llm_dialogue,
                 )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM 处理出错 {query}: {e}")
@@ -1649,6 +1662,7 @@ class ConnectionHandler:
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"关闭连接时出错: {e}")
         finally:
+            remove_context(self.session_id)
             # 确保停止事件被设置
             if self.stop_event:
                 self.stop_event.set()

@@ -10,6 +10,7 @@ from core.http_server import SimpleHttpServer
 from core.websocket_server import WebSocketServer
 from core.utils.util import check_ffmpeg_installed
 from core.utils.gc_manager import get_gc_manager
+from core.buddy.config_contract import validate_effective_config
 
 TAG = __name__
 logger = setup_logging()
@@ -46,6 +47,7 @@ async def monitor_stdin():
 async def main():
     check_ffmpeg_installed()
     config = await load_config()
+    validate_effective_config(config)
 
     # auth_key优先级：配置文件server.auth_key > manager-api.secret > 自动生成
     # auth_key用于jwt认证，比如视觉分析接口的jwt认证、ota接口的token生成与websocket认证

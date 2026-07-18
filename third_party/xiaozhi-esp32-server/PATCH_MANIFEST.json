@@ -1,10 +1,38 @@
 {
   "patches": [
     {
+      "current_sha256": "22cfa536f78511448082ac965552c35d059dd0a24ca7f4a5eb2a16806c169bd7",
+      "original_sha256": "620d1695c30d84267df4674de5427344bf0085421856a9ffa41e32fe747afbee",
+      "path": "app.py",
+      "reason": "Revalidate the effective Buddy ownership contract before constructing either XiaoZhi listener.",
+      "status": "modified"
+    },
+    {
       "current_sha256": "6c7aa42bde41827347457fbf4b01d8b223af84f8ec6369c5c8350b8efbb79e22",
       "original_sha256": "afbfbcd58afe3d323474a40f0d6cd08ecb95a7dfefafee7da3999985762fbe17",
       "path": "config.yaml",
       "reason": "Blank the upstream shared weather API key because it is unsafe for redistribution in this repository.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "0ccec40fca5009c512a9f3a9db99d05c05b87dcc76ef9ceceda9dc851efe8310",
+      "original_sha256": "85f696f67999a474c4785572fca4deffd801c921cac05943d70623697a2b9a06",
+      "path": "config/config_loader.py",
+      "reason": "Validate Buddy local and merged configuration before remote selection, directory setup, or cache reuse.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "88f9bb6de830735f0d5faed38a69faf454ae132c41895647cb7f651c99af7b58",
+      "original_sha256": "ddaed2dd1f2c7beb4b0b39349be6bac1611c2aa1caa3663e793864cd2bfcbf86",
+      "path": "core/connection.py",
+      "reason": "Register and remove immutable Buddy session identity, preserve invocation-local dialogue snapshots, and bypass upstream tools and manager title persistence in Buddy mode.",
+      "status": "modified"
+    },
+    {
+      "current_sha256": "c287959b552340ca4bf8da42625451c33559d6e96a9fca94691d27bef012fd46",
+      "original_sha256": "32c986ba5b1c7112974b6828596783111dcd28aac4837e46bf5d7579549f50ed",
+      "path": "core/handle/helloHandle.py",
+      "reason": "Prevent device-advertised MCP initialization in Buddy mode while retaining the upstream path outside Buddy mode.",
       "status": "modified"
     },
     {
@@ -22,6 +50,13 @@
       "status": "added"
     },
     {
+      "current_sha256": "f930c32563f8a9b18a0332989d97da0e31fd082296dc07440dd9e8fee8a81427",
+      "original_sha256": null,
+      "path": "core/buddy/config_contract.py",
+      "reason": "Validate the Buddy production ownership contract after configuration merge and reject local remote-manager settings before any remote fetch.",
+      "status": "added"
+    },
+    {
       "current_sha256": "14acb3a002509a549b176be03e15b9201f3cdf3f37fd0bb544ecd7212273b8af",
       "original_sha256": null,
       "path": "core/buddy/provider_errors.py",
@@ -29,10 +64,31 @@
       "status": "added"
     },
     {
+      "current_sha256": "280ffbdc1f5c74d5db826d0027597d08af88385b02e9a4a0402bd9017ec099d5",
+      "original_sha256": null,
+      "path": "core/buddy/session_context.py",
+      "reason": "Provide the immutable, lock-protected per-connection identity registry used by the Buddy Core LLM provider.",
+      "status": "added"
+    },
+    {
       "current_sha256": "ea991b387ea45350de6ad8f0136db8b0f7f8de913fe886ddfff027742384349e",
       "original_sha256": null,
       "path": "core/providers/asr/buddy_qwen.py",
       "reason": "Add the compatibility-authorized Qwen chat-completions ASR provider for the configured endpoint after native DashScope returned HTTP 404.",
+      "status": "added"
+    },
+    {
+      "current_sha256": "b1f53b131fbc70f4c27a39f4221d2a508bfa99971d33761973eecf52e30ae9e1",
+      "original_sha256": null,
+      "path": "core/providers/llm/buddy_core/__init__.py",
+      "reason": "Add the Buddy Core LLM provider package to the native XiaoZhi provider layout.",
+      "status": "added"
+    },
+    {
+      "current_sha256": "be904117b65c62e96366502b953064c84162b085813df39e8dbab12e1ac74697",
+      "original_sha256": null,
+      "path": "core/providers/llm/buddy_core/buddy_core.py",
+      "reason": "Route a current user turn with immutable connection metadata to the local Buddy Core OpenAI-compatible endpoint.",
       "status": "added"
     }
   ],

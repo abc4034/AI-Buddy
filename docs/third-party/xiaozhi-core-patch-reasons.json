@@ -2,6 +2,14 @@
   "config.yaml": "Blank the upstream shared weather API key because it is unsafe for redistribution in this repository.",
   "core/buddy/__init__.py": "Add the minimal Buddy integration package required to keep Task 4 provider failures separate from valid silence.",
   "core/buddy/provider_errors.py": "Define typed public ASR provider failures so upstream ASR errors are not converted to empty recognition.",
+  "core/buddy/config_contract.py": "Validate the Buddy production ownership contract after configuration merge and reject local remote-manager settings before any remote fetch.",
+  "core/buddy/session_context.py": "Provide the immutable, lock-protected per-connection identity registry used by the Buddy Core LLM provider.",
+  "core/connection.py": "Register and remove immutable Buddy session identity, preserve invocation-local dialogue snapshots, and bypass upstream tools and manager title persistence in Buddy mode.",
+  "core/handle/helloHandle.py": "Prevent device-advertised MCP initialization in Buddy mode while retaining the upstream path outside Buddy mode.",
+  "core/providers/llm/buddy_core/__init__.py": "Add the Buddy Core LLM provider package to the native XiaoZhi provider layout.",
+  "core/providers/llm/buddy_core/buddy_core.py": "Route a current user turn with immutable connection metadata to the local Buddy Core OpenAI-compatible endpoint.",
   "core/providers/asr/buddy_qwen.py": "Add the compatibility-authorized Qwen chat-completions ASR provider for the configured endpoint after native DashScope returned HTTP 404.",
-  "core/providers/asr/qwen3_asr_flash.py": "Preserve native Qwen provider failures as typed outcomes and pass configured endpoint and timeout to the DashScope SDK compatibility gate."
+  "core/providers/asr/qwen3_asr_flash.py": "Preserve native Qwen provider failures as typed outcomes and pass configured endpoint and timeout to the DashScope SDK compatibility gate.",
+  "app.py": "Revalidate the effective Buddy ownership contract before constructing either XiaoZhi listener.",
+  "config/config_loader.py": "Validate Buddy local and merged configuration before remote selection, directory setup, or cache reuse."
 }

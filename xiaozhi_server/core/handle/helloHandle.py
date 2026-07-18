@@ -51,7 +51,7 @@ async def handleHelloMessage(conn: "ConnectionHandler", msg_json):
     if features:
         conn.logger.bind(tag=TAG).debug(f"客户端特性: {features}")
         conn.features = features
-        if features.get("mcp"):
+        if features.get("mcp") and not conn.config.get("buddy_mode"):
             conn.logger.bind(tag=TAG).debug("客户端支持MCP")
             conn.mcp_client = MCPClient()
             # 发送初始化
