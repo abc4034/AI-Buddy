@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -1425,6 +1426,72 @@ def test_v05_restore_rejects_missing_or_mismatched_source_commit(tmp_path: Path)
         assert "source commit" in combined_output(restore).lower()
 
 
+def test_v05_restore_rejects_present_empty_environment_value_before_mutation(tmp_path: Path):
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    backup_root = fake_repo / "tmp" / "v05-runtime-backup"
+    dot_env = fake_repo / ".env"
+    dot_env.write_text("DEMO_VALUE=backup\n", encoding="utf-8")
+    backup = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                f"New-V05RuntimeBackup -BackupRoot '{backup_root}' | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    backup_dir = Path(json.loads(backup.stdout)["BackupDir"])
+    environment_path = backup_dir / "environment.json"
+    environment = json.loads(environment_path.read_text(encoding="utf-8"))
+    environment["process"]["ASR_PROVIDER"] = ""
+    environment_path.write_text(json.dumps(environment), encoding="utf-8")
+    environment_hash = hashlib.sha256(environment_path.read_bytes()).hexdigest()
+    manifest_path = backup_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest["files"]:
+        if entry["relative_path"] == "environment.json":
+            entry["sha256"] = environment_hash
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    dot_env.write_text("DEMO_VALUE=pre-restore\n", encoding="utf-8")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                "$env:ASR_PROVIDER = 'fixture-pre-restore'",
+                "$restoreFailed = $false",
+                "$rejectedAsEmpty = $false",
+                "try {",
+                f"  Restore-V05RuntimeBackup -BackupDir '{backup_dir}' -Apply -EnvironmentTarget Process | Out-Null",
+                "}",
+                "catch {",
+                "  $restoreFailed = $true",
+                "  $rejectedAsEmpty = $_.Exception.Message -like '*empty environment*'",
+                "}",
+                "[pscustomobject]@{",
+                "  RestoreFailed = $restoreFailed",
+                "  RejectedAsEmpty = $rejectedAsEmpty",
+                f"  DotEnvUnchanged = ((Get-Content -Raw -LiteralPath '{dot_env}').Trim() -eq 'DEMO_VALUE=pre-restore')",
+                "  EnvironmentUnchanged = ($env:ASR_PROVIDER -eq 'fixture-pre-restore')",
+                f"  SnapshotCount = @(Get-ChildItem -LiteralPath '{backup_dir}' -Directory -Filter 'pre-restore-*').Count",
+                "} | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+
+    assert payload == {
+        "RestoreFailed": True,
+        "RejectedAsEmpty": True,
+        "DotEnvUnchanged": True,
+        "EnvironmentUnchanged": True,
+        "SnapshotCount": 0,
+    }
+
+
 def test_v05_restore_rejects_existing_destination_reparse_point(tmp_path: Path):
     if os.name != "nt":
         pytest.skip("Windows reparse-point behavior is platform-specific")
@@ -1478,6 +1545,58 @@ def test_v05_restore_rejects_existing_destination_reparse_point(tmp_path: Path):
     assert restore.returncode != 0
     assert "reparse" in combined_output(restore).lower()
     assert outside_config.read_text(encoding="utf-8") == "selected_module: outside-current\n"
+
+
+def test_v05_restore_rejects_directory_at_file_destination_before_mutation(tmp_path: Path):
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    backup_root = fake_repo / "tmp" / "v05-runtime-backup"
+    dot_env = fake_repo / ".env"
+    dot_env.write_text("DEMO_VALUE=backup\n", encoding="utf-8")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                "$env:ASR_PROVIDER = 'fixture-backup'",
+                f"$backup = New-V05RuntimeBackup -BackupRoot '{backup_root}'",
+                f"Remove-Item -LiteralPath '{dot_env}' -Force",
+                f"New-Item -ItemType Directory -Path '{dot_env}' | Out-Null",
+                f"Set-Content -LiteralPath '{dot_env / 'existing.txt'}' -Value 'existing-child'",
+                "$env:ASR_PROVIDER = 'fixture-pre-restore'",
+                "$restoreFailed = $false",
+                "$rejectedAsNonRegular = $false",
+                "try {",
+                "  Restore-V05RuntimeBackup -BackupDir $backup.BackupDir -Apply -EnvironmentTarget Process | Out-Null",
+                "}",
+                "catch {",
+                "  $restoreFailed = $true",
+                "  $rejectedAsNonRegular = $_.Exception.Message -like '*regular file*'",
+                "}",
+                "[pscustomobject]@{",
+                "  RestoreFailed = $restoreFailed",
+                "  RejectedAsNonRegular = $rejectedAsNonRegular",
+                f"  DestinationIsDirectory = (Test-Path -LiteralPath '{dot_env}' -PathType Container)",
+                f"  ExistingChildPreserved = ((Get-Content -Raw -LiteralPath '{dot_env / 'existing.txt'}').Trim() -eq 'existing-child')",
+                f"  DestinationChildCount = @(Get-ChildItem -LiteralPath '{dot_env}' -Force).Count",
+                "  SnapshotCount = @(Get-ChildItem -LiteralPath $backup.BackupDir -Directory -Filter 'pre-restore-*').Count",
+                "  EnvironmentUnchanged = ($env:ASR_PROVIDER -eq 'fixture-pre-restore')",
+                "} | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+
+    assert payload == {
+        "RestoreFailed": True,
+        "RejectedAsNonRegular": True,
+        "DestinationIsDirectory": True,
+        "ExistingChildPreserved": True,
+        "DestinationChildCount": 1,
+        "SnapshotCount": 0,
+        "EnvironmentUnchanged": True,
+    }
 
 
 def test_v05_restore_recovers_all_destinations_after_mid_apply_failure(tmp_path: Path):
@@ -1540,6 +1659,67 @@ def test_v05_restore_recovers_all_destinations_after_mid_apply_failure(tmp_path:
         "ConfigRecovered": True,
         "AudioRecovered": True,
         "EnvironmentRecovered": True,
+    }
+
+
+def test_v05_restore_recovers_files_and_process_environment_after_late_write_failure(tmp_path: Path):
+    fake_repo = copy_v05_backup_script_to_fake_repo(tmp_path)
+    backup_root = fake_repo / "tmp" / "v05-runtime-backup"
+    dot_env = fake_repo / ".env"
+    dot_env.write_text("DEMO_VALUE=backup\n", encoding="utf-8")
+
+    result = run_powershell(
+        "\n".join(
+            [
+                "& {",
+                f". '{fake_repo / 'scripts' / 'backup_v05_runtime.ps1'}'",
+                "$env:ASR_PROVIDER = 'fixture-backup-provider'",
+                "$env:ASR_HTTP_URL = 'fixture-backup-url'",
+                f"$backup = New-V05RuntimeBackup -BackupRoot '{backup_root}'",
+                f"Set-Content -LiteralPath '{dot_env}' -Value 'DEMO_VALUE=pre-restore'",
+                "$env:ASR_PROVIDER = 'fixture-pre-restore-provider'",
+                "$env:ASR_HTTP_URL = 'fixture-pre-restore-url'",
+                "$script:EnvironmentWriteAttempts = 0",
+                "function Set-V05EnvironmentVariable {",
+                "  param(",
+                "    [Parameter(Mandatory = $true)][string]$Name,",
+                "    [AllowNull()][string]$Value,",
+                "    [Parameter(Mandatory = $true)][ValidateSet('Process', 'User')][string]$EnvironmentTarget",
+                "  )",
+                "  $script:EnvironmentWriteAttempts += 1",
+                "  if ($script:EnvironmentWriteAttempts -eq 3) { throw 'injected environment write failure' }",
+                "  [System.Environment]::SetEnvironmentVariable($Name, $Value, $EnvironmentTarget)",
+                "}",
+                "$restoreFailed = $false",
+                "$recoveryReported = $false",
+                "try {",
+                "  Restore-V05RuntimeBackup -BackupDir $backup.BackupDir -Apply -EnvironmentTarget Process | Out-Null",
+                "}",
+                "catch {",
+                "  $restoreFailed = $true",
+                "  $recoveryReported = $_.Exception.Message -like '*pre-restore state was recovered*'",
+                "}",
+                "[pscustomobject]@{",
+                "  RestoreFailed = $restoreFailed",
+                "  RecoveryReported = $recoveryReported",
+                f"  DotEnvRecovered = ((Get-Content -Raw -LiteralPath '{dot_env}').Trim() -eq 'DEMO_VALUE=pre-restore')",
+                "  ProviderRecovered = ($env:ASR_PROVIDER -eq 'fixture-pre-restore-provider')",
+                "  UrlRecovered = ($env:ASR_HTTP_URL -eq 'fixture-pre-restore-url')",
+                "  RecoveryWritesOccurred = ($script:EnvironmentWriteAttempts -gt 3)",
+                "} | ConvertTo-Json -Compress",
+                "}",
+            ]
+        )
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+
+    assert payload == {
+        "RestoreFailed": True,
+        "RecoveryReported": True,
+        "DotEnvRecovered": True,
+        "ProviderRecovered": True,
+        "UrlRecovered": True,
+        "RecoveryWritesOccurred": True,
     }
 
 
@@ -1683,6 +1863,91 @@ def test_v05_staged_secret_scanner_constrains_fixture_paths_and_markers(tmp_path
 
         assert (result.returncode == 0) is should_pass, case_name
         assert marker not in combined_output(result)
+
+
+def test_v05_staged_secret_scanner_rejects_later_sensitive_assignment_on_same_line(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "scan_staged_secrets.ps1"
+    fixture_marker = "fixture-" + "later-sensitive-material"
+    first_assignment_name = "ASR_API" + "_KEY"
+    second_assignment_name = "TTS_API" + "_KEY"
+    fixtures = {
+        "json": json.dumps(
+            {first_assignment_name: "placeholder", second_assignment_name: fixture_marker},
+            separators=(",", ":"),
+        )
+        + "\n",
+        "toml": (
+            f'{first_assignment_name} = "placeholder", '
+            f'{second_assignment_name} = "{fixture_marker}"\n'
+        ),
+    }
+
+    for syntax, content in fixtures.items():
+        repository = tmp_path / f"multi-{syntax}"
+        relative_path = f"config/runtime.{syntax}"
+        path = repository / relative_path
+        path.parent.mkdir(parents=True)
+        path.write_text(content, encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+        subprocess.run(["git", "add", relative_path], cwd=repository, check=True)
+
+        result = run_powershell(
+            "\n".join(["& {", f". '{script_path}'", "Invoke-StagedSecretScan", "}"]),
+            cwd=repository,
+            check=False,
+        )
+
+        assert result.returncode != 0, syntax
+        assert fixture_marker not in combined_output(result)
+
+
+def test_v05_staged_secret_scanner_requires_every_fixture_assignment_to_be_approved(tmp_path: Path):
+    script_path = SCRIPTS_DIR / "scan_staged_secrets.ps1"
+    first_approved_marker = "sk-" + "test-approved-first"
+    second_approved_marker = "sk-" + "test-approved-second"
+    rejected_marker = "fixture-" + "later-sensitive-material"
+    first_assignment_name = "ASR_API" + "_KEY"
+    second_assignment_name = "TTS_API" + "_KEY"
+    relative_path = "tests/fixtures/secret-scan/multi.fixture"
+    cases = (
+        ("all-approved", second_approved_marker, True),
+        ("mixed", rejected_marker, False),
+    )
+
+    for case_name, second_marker, should_pass in cases:
+        repository = tmp_path / f"fixture-{case_name}"
+        path = repository / relative_path
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    first_assignment_name: first_approved_marker,
+                    second_assignment_name: second_marker,
+                },
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+        subprocess.run(["git", "add", relative_path], cwd=repository, check=True)
+
+        result = run_powershell(
+            "\n".join(
+                [
+                    "& {",
+                    f". '{script_path}'",
+                    f"Invoke-StagedSecretScan -AllowedTestFixturePath '{relative_path}'",
+                    "}",
+                ]
+            ),
+            cwd=repository,
+            check=False,
+        )
+
+        assert (result.returncode == 0) is should_pass, case_name
+        assert first_approved_marker not in combined_output(result)
+        assert second_marker not in combined_output(result)
 
 
 def test_check_local_demo_status_reports_ports_config_and_runtime_patch(tmp_path: Path):

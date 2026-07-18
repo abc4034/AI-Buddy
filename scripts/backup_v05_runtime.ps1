@@ -85,6 +85,17 @@ function Assert-V05NoDestinationReparsePoint {
   }
 }
 
+function Assert-V05RegularFileDestination {
+  param([Parameter(Mandatory = $true)][string]$Destination)
+
+  if (Test-Path -LiteralPath $Destination) {
+    $item = Get-Item -LiteralPath $Destination -Force
+    if ($item -isnot [System.IO.FileInfo]) {
+      throw "Existing restore destination is not a regular file."
+    }
+  }
+}
+
 function Write-V05Utf8Json {
   param(
     [Parameter(Mandatory = $true)][object]$Value,
@@ -116,6 +127,16 @@ function Get-V05EnvironmentSnapshot {
   }
 }
 
+function Set-V05EnvironmentVariable {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [AllowNull()][string]$Value,
+    [Parameter(Mandatory = $true)][ValidateSet("Process", "User")][string]$EnvironmentTarget
+  )
+
+  [System.Environment]::SetEnvironmentVariable($Name, $Value, $EnvironmentTarget)
+}
+
 function Set-V05EnvironmentFromSnapshot {
   param(
     [Parameter(Mandatory = $true)][object]$Snapshot,
@@ -135,7 +156,7 @@ function Set-V05EnvironmentFromSnapshot {
         $value = [string]$property.Value
       }
     }
-    [System.Environment]::SetEnvironmentVariable($name, $value, $EnvironmentTarget)
+    Set-V05EnvironmentVariable -Name $name -Value $value -EnvironmentTarget $EnvironmentTarget
   }
 }
 
@@ -240,6 +261,7 @@ function Resolve-V05RestoreDestination {
   }
   if ($null -ne $destination) {
     Assert-V05NoDestinationReparsePoint -RepositoryRoot $RepositoryRoot -Destination $destination
+    Assert-V05RegularFileDestination -Destination $destination
     return $destination
   }
 
@@ -307,6 +329,9 @@ function Get-V05ManifestRestorePlan {
     foreach ($property in @($environment.$scope.psobject.Properties)) {
       if ($script:EnvironmentNames -notcontains $property.Name -or $property.Value -isnot [string]) {
         throw "Backup environment data is invalid."
+      }
+      if ($property.Value.Length -eq 0) {
+        throw "Backup environment data contains an empty environment value."
       }
     }
   }

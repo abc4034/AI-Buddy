@@ -14,23 +14,27 @@ function Test-PlaceholderValue {
     $normalized.StartsWith('${') -or $normalized.StartsWith("<")
 }
 
-function Get-SensitiveAssignmentValue {
+function Get-SensitiveAssignmentValues {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
 
   $sensitiveNamePattern = '(?:API_' + 'KEY|API_' + 'TOKEN|ACCESS_' + 'TOKEN|AUTH_' + 'TOKEN|SECRET|TOKEN|KEY)'
   $pattern = '(?i)(?:^|[\s{,])[''"]?[A-Z][A-Z0-9_.-]*' + $sensitiveNamePattern + '[A-Z0-9_.-]*[''"]?\s*(?:=|:)\s*("[^"]*"|''[^'']*''|[^\s,#}]+)'
-  $match = [regex]::Match($Line, $pattern)
-  if ($match.Success) {
-    return $match.Groups[1].Value
+  $values = @()
+  foreach ($match in [regex]::Matches($Line, $pattern)) {
+    $values += $match.Groups[1].Value
   }
-  return $null
+  return $values
 }
 
 function Test-NonPlaceholderKeyAssignment {
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
 
-  $value = Get-SensitiveAssignmentValue -Line $Line
-  return $null -ne $value -and -not (Test-PlaceholderValue -Value $value)
+  foreach ($value in @(Get-SensitiveAssignmentValues -Line $Line)) {
+    if (-not (Test-PlaceholderValue -Value $value)) {
+      return $true
+    }
+  }
+  return $false
 }
 
 function Test-ApprovedFixtureLine {
@@ -49,8 +53,7 @@ function Test-ApprovedFixtureLine {
     return $false
   }
 
-  $assignmentValue = Get-SensitiveAssignmentValue -Line $Line
-  if ($null -ne $assignmentValue) {
+  foreach ($assignmentValue in @(Get-SensitiveAssignmentValues -Line $Line)) {
     $normalized = $assignmentValue.Trim().Trim(',', '}').Trim().Trim("'", '"')
     if ($normalized -notmatch $script:ApprovedFixtureMarkerPattern) {
       return $false
