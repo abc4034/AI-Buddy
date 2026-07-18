@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 from string import Template
@@ -77,7 +78,7 @@ def validate_asr_environment(environment: dict[str, str]) -> dict[str, str]:
         timeout = float(environment.get("ASR_TIMEOUT_SECONDS", ""))
     except ValueError:
         timeout = 0
-    if missing or timeout <= 0:
+    if missing or not math.isfinite(timeout) or timeout <= 0:
         requirements = ", ".join((*required, "a positive ASR_TIMEOUT_SECONDS"))
         raise ValueError(f"ASR live mode requires {requirements}.")
 

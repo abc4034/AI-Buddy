@@ -1,4 +1,5 @@
 import base64
+import math
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -20,7 +21,13 @@ class ASRProvider(ASRProviderBase):
         self.output_dir = config.get("output_dir", "./audio_output")
         self.delete_audio_file = delete_audio_file
 
-        if not self.api_key or not self.model_name or not self.base_url or self.timeout_seconds <= 0:
+        if (
+            not self.api_key
+            or not self.model_name
+            or not self.base_url
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+        ):
             raise ValueError("Buddy Qwen ASR requires api_key, model_name, base_url, and a positive timeout_seconds.")
 
     def prefers_temp_file(self) -> bool:

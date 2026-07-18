@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 from pathlib import Path
 
@@ -91,6 +92,14 @@ def test_renderer_requires_complete_live_configuration_without_echoing_values():
     assert "ASR_TIMEOUT_SECONDS" in str(error.value)
 
 
+@pytest.mark.parametrize("timeout", ["nan", "inf", "-inf"])
+def test_renderer_rejects_non_finite_timeout(timeout):
+    environment = dict(TEST_ASR_ENVIRONMENT, ASR_TIMEOUT_SECONDS=timeout)
+
+    with pytest.raises(ValueError, match="ASR_TIMEOUT_SECONDS"):
+        render_config("192.168.2.9", process_environment=environment, user_environment={})
+
+
 def test_render_script_passes_no_asr_secret_command_line_argument_or_stdout():
     script = (REPO_ROOT / "scripts" / "render_xiaozhi_config.ps1").read_text(encoding="utf-8")
 
@@ -105,6 +114,48 @@ def test_hardware_smoke_script_checks_for_a_device_and_non_empty_transcript_with
     assert "device" in script.lower()
     assert "transcript" in script.lower()
     assert "ASR_API_KEY" not in script
+
+
+def test_hardware_smoke_script_accepts_pinned_runtime_device_header(tmp_path):
+    log_path = tmp_path / "server.log"
+    log_path.write_text(
+        "192.168.0.104 conn - Headers: {'device-id': 'fc:01:2c:cf:17:54'}\n"
+        "transcript: hello from hardware\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(REPO_ROOT / "scripts" / "smoke_xiaozhi_asr.ps1"),
+            "-LogPath",
+            str(log_path),
+            "-TimeoutSeconds",
+            "2",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "fc:01:2c:cf:17:54" in result.stdout
+
+
+@pytest.mark.parametrize("provider_class", [ASRProvider, BuddyQwenASRProvider])
+@pytest.mark.parametrize("timeout", ["nan", "inf", "-inf"])
+def test_asr_providers_reject_non_finite_timeout(provider_class, timeout):
+    config = provider_config()
+    config["timeout_seconds"] = timeout
+
+    with pytest.raises(ValueError, match="positive timeout_seconds"):
+        provider_class(config, delete_audio_file=True)
 
 
 def test_native_provider_returns_a_transcript_and_uses_configured_endpoint_and_timeout(monkeypatch):

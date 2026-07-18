@@ -407,6 +407,28 @@ def test_render_script_rejects_invalid_manual_host_ip_before_calling_py():
         assert "py should not be called" not in combined
 
 
+def test_render_script_rejects_non_finite_asr_timeout():
+    script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
+
+    for timeout in ("NaN", "Infinity", "-Infinity"):
+        result = run_powershell(
+            "\n".join(
+                [
+                    "& {",
+                    f". '{script_path}'",
+                    "'ASR_PROVIDER','ASR_HTTP_URL','ASR_MODEL','ASR_API_KEY' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, 'test-value', 'Process') }",
+                    f"[Environment]::SetEnvironmentVariable('ASR_TIMEOUT_SECONDS', '{timeout}', 'Process')",
+                    "Assert-LiveAsrEnvironment",
+                    "}",
+                ]
+            ),
+            check=False,
+        )
+
+        assert result.returncode != 0, timeout
+        assert "ASR_TIMEOUT_SECONDS" in combined_output(result)
+
+
 def test_render_script_rejects_output_outside_runtime_before_calling_py(tmp_path: Path):
     script_path = SCRIPTS_DIR / "render_xiaozhi_config.ps1"
     output = tmp_path / "outside" / ".config.yaml"

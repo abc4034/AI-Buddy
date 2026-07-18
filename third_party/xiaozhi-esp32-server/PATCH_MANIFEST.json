@@ -8,7 +8,7 @@
       "status": "modified"
     },
     {
-      "current_sha256": "4cc9dd733a78af7e00a772457a2541c8721a4ed299c28a04ddea797edc108eb0",
+      "current_sha256": "4ca7b598122265450e2d42e70fb03595383ea056ac29487c36f07ad2dccd809c",
       "original_sha256": "43533c7b1418ba3ffb863cf562fae370e0579d9ffd1af980bdd30c38e58d2043",
       "path": "core/providers/asr/qwen3_asr_flash.py",
       "reason": "Preserve native Qwen provider failures as typed outcomes and pass configured endpoint and timeout to the DashScope SDK compatibility gate.",
@@ -29,7 +29,7 @@
       "status": "added"
     },
     {
-      "current_sha256": "a19b36d259bdbbb3c9978ae988a2ee3e73d7c091a0c6c992711fd4fc0659a883",
+      "current_sha256": "6f3350fb505f7eb0851b967ecb7174f33f337940de321da8746907a8bbe3188a",
       "original_sha256": null,
       "path": "core/providers/asr/buddy_qwen.py",
       "reason": "Add the compatibility-authorized Qwen chat-completions ASR provider for the configured endpoint after native DashScope returned HTTP 404.",

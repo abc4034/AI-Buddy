@@ -1,4 +1,5 @@
 import os
+import math
 from collections.abc import Mapping
 from typing import List, Optional, Tuple
 
@@ -27,7 +28,13 @@ class ASRProvider(ASRProviderBase):
         self.language = config.get("language")
         self.context = config.get("context", "")
 
-        if not self.api_key or not self.model_name or not self.base_url or self.timeout_seconds <= 0:
+        if (
+            not self.api_key
+            or not self.model_name
+            or not self.base_url
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+        ):
             raise ValueError("Qwen ASR requires api_key, model_name, base_url, and a positive timeout_seconds.")
         os.makedirs(self.output_dir, exist_ok=True)
 
