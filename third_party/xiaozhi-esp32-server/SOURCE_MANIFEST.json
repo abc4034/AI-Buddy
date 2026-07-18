@@ -701,6 +701,26 @@
       "sha256": "6800a9a9b796e607a76315aa7e11f3a14b82aaad06a05ce75125845ceff834f7"
     },
     {
+      "path": "models/snakers4_silero-vad/src/silero_vad/data/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/data/silero_vad.jit",
+      "sha256": "85c48e1f0ecb604e5d2a268f3ccfb912d4f7e935acdc86af5a3fc5b0aea7b29a"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/data/silero_vad.onnx",
+      "sha256": "2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/data/silero_vad_16k_op15.onnx",
+      "sha256": "b6875a49bacf6d57826a7e0a549d5a05d769ee34405cadcc9ff8b4442544b1f9"
+    },
+    {
+      "path": "models/snakers4_silero-vad/src/silero_vad/data/silero_vad_half.onnx",
+      "sha256": "1e0b195ad4806595ef4466f419d16fca7e4afcfc6669b8c0b5f76ea87547c769"
+    },
+    {
       "path": "models/snakers4_silero-vad/src/silero_vad/model.py",
       "sha256": "cd6e7eb8441094872674f1ae9292a9d9a43fb2ca977e9312383be9f11d314adc"
     },

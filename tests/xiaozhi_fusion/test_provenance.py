@@ -69,6 +69,23 @@ def test_build_manifest_records_pinned_origin_and_sorted_per_file_hashes(source_
     assert all(len(entry["sha256"]) == 64 for entry in manifest["files"])
 
 
+def test_nested_model_data_assets_remain_under_provenance(source_and_imported):
+    source, imported, metadata = source_and_imported
+    relative = Path("models") / "silero" / "data" / "model.onnx"
+    write(source / relative, b"upstream model")
+    write(imported / relative, b"upstream model")
+
+    manifest = build_manifest(source, imported, metadata)
+
+    assert relative.as_posix() in {entry["path"] for entry in manifest["files"]}
+    write(imported / relative, b"changed model")
+    assert verify_manifest(imported, manifest, {"patches": []}) == [
+        "unrecorded-modification:" + relative.as_posix()
+    ]
+    with pytest.raises(ValueError, match="model.onnx"):
+        update_patch_manifest(imported, manifest, {})
+
+
 def test_verify_manifest_reports_missing_modified_and_unexpected_paths_deterministically(source_and_imported):
     source, imported, metadata = source_and_imported
     manifest = build_manifest(source, imported, metadata)

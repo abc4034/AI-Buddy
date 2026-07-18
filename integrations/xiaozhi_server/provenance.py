@@ -32,7 +32,9 @@ def _iter_files(root: Path):
         if not path.is_file():
             continue
         relative = path.relative_to(root)
-        if EXCLUDED_PARTS.intersection(relative.parts):
+        if "__pycache__" in relative.parts or (
+            relative.parts and relative.parts[0] in {"data", "tmp"}
+        ):
             continue
         yield relative.as_posix(), path
 
