@@ -53,6 +53,38 @@ function Resolve-V05ChildPath {
   $candidate
 }
 
+function Assert-V05NoDestinationReparsePoint {
+  param(
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+    [Parameter(Mandatory = $true)][string]$Destination
+  )
+
+  $rootPath = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([char[]]@('\', '/'))
+  $destinationPath = [System.IO.Path]::GetFullPath($Destination)
+  $prefix = $rootPath + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $destinationPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Restore destination is outside the repository."
+  }
+
+  $components = @($rootPath)
+  $current = $rootPath
+  $relativePath = $destinationPath.Substring($prefix.Length)
+  foreach ($segment in $relativePath.Split([char[]]@('\', '/'), [System.StringSplitOptions]::RemoveEmptyEntries)) {
+    $current = Join-Path $current $segment
+    $components += $current
+  }
+
+  foreach ($component in $components) {
+    if (-not (Test-Path -LiteralPath $component)) {
+      break
+    }
+    $item = Get-Item -LiteralPath $component -Force
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw "Restore destination contains an existing reparse-point component."
+    }
+  }
+}
+
 function Write-V05Utf8Json {
   param(
     [Parameter(Mandatory = $true)][object]$Value,
@@ -81,6 +113,29 @@ function Get-V05EnvironmentSnapshot {
   [ordered]@{
     process = $process
     user = $user
+  }
+}
+
+function Set-V05EnvironmentFromSnapshot {
+  param(
+    [Parameter(Mandatory = $true)][object]$Snapshot,
+    [Parameter(Mandatory = $true)][ValidateSet("Process", "User")][string]$EnvironmentTarget
+  )
+
+  foreach ($name in $script:EnvironmentNames) {
+    $value = $null
+    if ($Snapshot -is [System.Collections.IDictionary]) {
+      if ($Snapshot.Contains($name)) {
+        $value = [string]$Snapshot[$name]
+      }
+    }
+    else {
+      $property = $Snapshot.psobject.Properties[$name]
+      if ($null -ne $property) {
+        $value = [string]$property.Value
+      }
+    }
+    [System.Environment]::SetEnvironmentVariable($name, $value, $EnvironmentTarget)
   }
 }
 
@@ -170,15 +225,22 @@ function Resolve-V05RestoreDestination {
     [Parameter(Mandatory = $true)][string]$RelativePath
   )
 
+  $destination = $null
   if ($RelativePath -eq ".env" -or $RelativePath -eq $script:XiaoZhiConfigRelativePath) {
-    return Resolve-V05ChildPath -Root $RepositoryRoot -RelativePath $RelativePath
+    $destination = Resolve-V05ChildPath -Root $RepositoryRoot -RelativePath $RelativePath
   }
-  $audioPrefix = $script:GatewayAudioRelativeRoot + "/"
-  if ($RelativePath.StartsWith($audioPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-    return Resolve-V05ChildPath -Root $RepositoryRoot -RelativePath $RelativePath
+  else {
+    $audioPrefix = $script:GatewayAudioRelativeRoot + "/"
+    if ($RelativePath.StartsWith($audioPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $destination = Resolve-V05ChildPath -Root $RepositoryRoot -RelativePath $RelativePath
+    }
   }
   if ($RelativePath -eq "environment.json") {
     return $null
+  }
+  if ($null -ne $destination) {
+    Assert-V05NoDestinationReparsePoint -RepositoryRoot $RepositoryRoot -Destination $destination
+    return $destination
   }
 
   throw "Backup file destination is not approved."
@@ -195,6 +257,9 @@ function Get-V05ManifestRestorePlan {
     throw "Backup manifest is missing."
   }
   $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  if ([string]$manifest.source_commit -ne $script:V05SourceCommit) {
+    throw "Backup manifest source commit does not identify the v0.5 baseline."
+  }
   if ($null -eq $manifest.files -or [string]::IsNullOrWhiteSpace($manifest.environment_file)) {
     throw "Backup manifest is incomplete."
   }
@@ -252,21 +317,67 @@ function Get-V05ManifestRestorePlan {
 function New-V05PreRestoreSnapshot {
   param(
     [Parameter(Mandatory = $true)][string]$BackupDir,
-    [Parameter(Mandatory = $true)][object[]]$FileActions,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$FileActions,
     [Parameter(Mandatory = $true)][ValidateSet("Process", "User")][string]$EnvironmentTarget
   )
 
   $snapshot = Join-Path $BackupDir ("pre-restore-" + (Get-Date -Format "yyyyMMdd-HHmmssfff"))
   New-Item -ItemType Directory -Force -Path $snapshot | Out-Null
+  $fileStates = @()
   foreach ($action in $FileActions) {
-    if (Test-Path -LiteralPath $action.Destination -PathType Leaf) {
+    $originalExists = Test-Path -LiteralPath $action.Destination -PathType Leaf
+    $snapshotPath = $null
+    if ($originalExists) {
       $snapshotPath = Resolve-V05ChildPath -Root $snapshot -RelativePath $action.RelativePath
       New-Item -ItemType Directory -Force -Path (Split-Path -Parent $snapshotPath) | Out-Null
       Copy-Item -LiteralPath $action.Destination -Destination $snapshotPath -Force
     }
+    $fileStates += [pscustomobject]@{
+      RelativePath = $action.RelativePath
+      Destination = $action.Destination
+      OriginalExists = $originalExists
+      SnapshotPath = $snapshotPath
+    }
   }
-  Write-V05Utf8Json -Value (Get-V05EnvironmentSnapshot) -Path (Join-Path $snapshot "environment.json")
-  $snapshot
+  $environment = Get-V05EnvironmentSnapshot
+  Write-V05Utf8Json -Value $environment -Path (Join-Path $snapshot "environment.json")
+
+  [pscustomobject]@{
+    Directory = $snapshot
+    FileStates = $fileStates
+    Environment = $environment
+  }
+}
+
+function Restore-V05FileState {
+  param(
+    [Parameter(Mandatory = $true)][object]$State,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
+  )
+
+  Assert-V05NoDestinationReparsePoint -RepositoryRoot $RepositoryRoot -Destination $State.Destination
+  if (-not $State.OriginalExists) {
+    if (Test-Path -LiteralPath $State.Destination -PathType Leaf) {
+      Remove-Item -LiteralPath $State.Destination -Force
+    }
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace([string]$State.SnapshotPath) -or -not (Test-Path -LiteralPath $State.SnapshotPath -PathType Leaf)) {
+    throw "Pre-restore snapshot file is missing."
+  }
+
+  $parent = Split-Path -Parent $State.Destination
+  New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  $temporary = Join-Path $parent ("." + [System.IO.Path]::GetFileName($State.Destination) + ".v05-recovery-" + [guid]::NewGuid().ToString("N") + ".tmp")
+  try {
+    Copy-Item -LiteralPath $State.SnapshotPath -Destination $temporary -Force
+    Move-Item -LiteralPath $temporary -Destination $State.Destination -Force
+  }
+  finally {
+    if (Test-Path -LiteralPath $temporary -PathType Leaf) {
+      Remove-Item -LiteralPath $temporary -Force
+    }
+  }
 }
 
 function Restore-V05RuntimeBackup {
@@ -280,41 +391,68 @@ function Restore-V05RuntimeBackup {
   if (-not (Test-Path -LiteralPath $backupPath -PathType Container)) {
     throw "Backup directory is missing."
   }
-  $plan = Get-V05ManifestRestorePlan -BackupDir $backupPath -RepositoryRoot (Get-V05RepositoryRoot)
+  $repositoryRoot = Get-V05RepositoryRoot
+  $plan = Get-V05ManifestRestorePlan -BackupDir $backupPath -RepositoryRoot $repositoryRoot
   $environmentValues = $plan.Environment.($EnvironmentTarget.ToLowerInvariant())
 
   if (-not $Apply) {
     foreach ($action in $plan.FileActions) {
       Write-Output ("Validated file restore: {0}" -f $action.RelativePath)
     }
-    foreach ($property in @($environmentValues.psobject.Properties)) {
-      Write-Output ("Validated {0} environment restore: {1}" -f $EnvironmentTarget, $property.Name)
+    foreach ($name in $script:EnvironmentNames) {
+      Write-Output ("Validated {0} environment restore: {1}" -f $EnvironmentTarget, $name)
     }
     return [pscustomobject]@{ Applied = $false; FileCount = @($plan.FileActions).Count; EnvironmentTarget = $EnvironmentTarget }
   }
 
   $snapshot = New-V05PreRestoreSnapshot -BackupDir $backupPath -FileActions @($plan.FileActions) -EnvironmentTarget $EnvironmentTarget
+  $statesByPath = @{}
+  foreach ($state in $snapshot.FileStates) {
+    $statesByPath[$state.RelativePath] = $state
+  }
   $temporaryFiles = @()
+  $appliedStates = @()
   try {
     foreach ($action in $plan.FileActions) {
       $parent = Split-Path -Parent $action.Destination
       New-Item -ItemType Directory -Force -Path $parent | Out-Null
       $temporary = Join-Path $parent ("." + [System.IO.Path]::GetFileName($action.Destination) + ".v05-restore-" + [guid]::NewGuid().ToString("N") + ".tmp")
       Copy-Item -LiteralPath $action.Source -Destination $temporary -Force
-      $temporaryFiles += [pscustomobject]@{ Temporary = $temporary; Destination = $action.Destination }
+      $temporaryFiles += [pscustomobject]@{
+        Temporary = $temporary
+        Destination = $action.Destination
+        State = $statesByPath[$action.RelativePath]
+      }
     }
 
     foreach ($temporaryFile in $temporaryFiles) {
-      if (Test-Path -LiteralPath $temporaryFile.Destination -PathType Leaf) {
-        Move-Item -LiteralPath $temporaryFile.Temporary -Destination $temporaryFile.Destination -Force
+      Move-Item -LiteralPath $temporaryFile.Temporary -Destination $temporaryFile.Destination -Force
+      $appliedStates += $temporaryFile.State
+    }
+    Set-V05EnvironmentFromSnapshot -Snapshot $environmentValues -EnvironmentTarget $EnvironmentTarget
+  }
+  catch {
+    $recoveryFailureCount = 0
+    for ($index = $appliedStates.Count - 1; $index -ge 0; $index--) {
+      try {
+        Restore-V05FileState -State $appliedStates[$index] -RepositoryRoot $repositoryRoot
       }
-      else {
-        Move-Item -LiteralPath $temporaryFile.Temporary -Destination $temporaryFile.Destination -Force
+      catch {
+        $recoveryFailureCount += 1
       }
     }
-    foreach ($property in @($environmentValues.psobject.Properties)) {
-      [System.Environment]::SetEnvironmentVariable($property.Name, [string]$property.Value, $EnvironmentTarget)
+    try {
+      $originalEnvironment = $snapshot.Environment.($EnvironmentTarget.ToLowerInvariant())
+      Set-V05EnvironmentFromSnapshot -Snapshot $originalEnvironment -EnvironmentTarget $EnvironmentTarget
     }
+    catch {
+      $recoveryFailureCount += 1
+    }
+
+    if ($recoveryFailureCount -gt 0) {
+      throw ("Restore failed and deterministic recovery failed for {0} action(s). Pre-restore snapshot: {1}" -f $recoveryFailureCount, $snapshot.Directory)
+    }
+    throw ("Restore failed; the pre-restore state was recovered. Snapshot: {0}" -f $snapshot.Directory)
   }
   finally {
     foreach ($temporaryFile in $temporaryFiles) {
@@ -324,7 +462,7 @@ function Restore-V05RuntimeBackup {
     }
   }
 
-  [pscustomobject]@{ Applied = $true; FileCount = @($plan.FileActions).Count; EnvironmentTarget = $EnvironmentTarget; PreRestoreSnapshot = $snapshot }
+  [pscustomobject]@{ Applied = $true; FileCount = @($plan.FileActions).Count; EnvironmentTarget = $EnvironmentTarget; PreRestoreSnapshot = $snapshot.Directory }
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
