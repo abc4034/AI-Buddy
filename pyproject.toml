@@ -32,4 +32,4 @@ markers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["buddy_brain", "buddy_gateway"]
+packages = ["buddy_brain"]

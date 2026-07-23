@@ -1,5 +1,7 @@
 # Buddy Device Gateway v0.1-v0.5 Runbook
 
+> Archived: v0.1-v0.5 was superseded by the fused XiaoZhi Core runtime. The implementation remains available in Git history on `codex/buddy-device-gateway-v0.5-voice-loop`; do not use these commands for the current runtime.
+
 This runbook covers the first replacement steps for XiaoZhi Server.
 
 ## Scope
